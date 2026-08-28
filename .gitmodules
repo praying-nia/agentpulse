@@ -1,0 +1,21 @@
+[submodule "agentpulse-rs"]
+	path = agentpulse-rs
+	url = ../agentpulse-rs.git
+	branch = master
+[submodule "agentpulse-android"]
+	path = agentpulse-android
+	url = ../agentpulse-android.git
+	branch = master
+[submodule "agentpulse-ios"]
+	path = agentpulse-ios
+	url = ../agentpulse-ios.git
+	branch = master
+[submodule "agentpulse-harmony"]
+	path = agentpulse-harmony
+	url = ../agentpulse-harmony.git
+	branch = master
+[submodule "agentpulse-protocol"]
+	path = agentpulse-protocol
+	url = ../agentpulse-protocol.git
+	branch = master
+
