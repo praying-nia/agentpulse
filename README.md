@@ -41,4 +41,3 @@ git submodule update --init --recursive
 AgentPulse is currently in its initial architecture and repository-bootstrap phase.
 
 AgentPulse 目前处于架构设计与仓库初始化阶段。
-
