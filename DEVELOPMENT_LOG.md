@@ -15,22 +15,65 @@
 最后更新：2026-08-29
 
 - 当前阶段：基础架构建设。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口与集中 Capability 路由。
-- 下一目标：实现 Bridge 最小闭环。
+- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由与 Bridge 最小闭环。
+- 下一目标：实现 Bridge 多端点注册与显式 Session–Channel 订阅/扇出。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“Bridge 最小闭环”完成时应满足：
+“Bridge 多端点注册与显式 Session–Channel 订阅/扇出”完成时应满足：
 
-- Bridge 注册 Provider 与 Channel Port，并维护 Descriptor 与 Session 的关联。
-- Provider Event 经过集中能力校验与 Session Reducer 后，将标准化 Event、路由结果和必要的最新 Session 视图交给 Channel。
-- Channel Response 与 Command 根据当前 Session 和待处理 Request 重新校验，再交给目标 Provider。
-- 使用 Fake Provider 与 Test Channel 覆盖 Event → Reduce → Deliver 以及 Action → Validate → Provider 的端到端闭环。
+- Bridge 可注册多个异构 Provider 与 Channel Port，以强类型 ID 稳定查找 Descriptor，并拒绝重复注册。
+- Session 明确关联所属 Provider；Channel 通过显式订阅与取消订阅决定接收哪些 Session 的 Event 与最新视图。
+- Provider Event 只扇出到订阅目标；单个 Channel 交接失败不会阻止其他 Channel，并返回逐目标交付结果。
+- Channel Action 根据来源 Channel、目标 Session 与所属 Provider 解析唯一链路，继续执行集中 Capability 与 Request 校验。
+- 使用多个 Fake Provider 与 Test Channel 覆盖订阅、取消订阅、无串流、失败隔离及反向 Action 路由。
 
-本阶段仍不接入真实 Provider、Channel、网络 Transport、数据库或 Relay。
+下一阶段仍不接入 Adapter 自动发现、真实 Provider、真实 Channel、网络 Transport、数据库或 Relay。
 
 ## 历史记录
+
+### 2026-08-29 — Bridge 最小闭环
+
+状态：已完成，当前总控、Rust 与协议规范三个仓库的相关工作区修改均尚未提交；submodule 指针尚未更新。
+
+完成内容：
+
+- 在 `agentpulse-bridge` 实现同步内存 `Bridge<P, C>`，每个实例注册一个 Provider Port 与一个 Channel Port，并使用 Descriptor 快照管理多个 Session Aggregate。
+- Provider Event 先校验来源、Session 归属与集中 Capability Route，再创建或推进 Reducer；未知 Session 必须由 sequence 1 的 `SessionStarted` 开始。
+- 已应用 Event 携带集中 `ChannelEventRoute` 交给 Channel；Session 状态类 Event 在 Channel 支持 `SESSION_VIEW` 时额外交付最新 Session 视图。
+- Channel Interaction Response 根据当前待处理 Request 重新校验，Agent Command 根据当前 Session 重新校验，成功后交给目标 Provider。
+- 增加 Provider Event Outcome、Channel/Provider Handoff 阶段及两类带 Adapter 原始错误源的结构化 Bridge Error。
+- 使用 Fake Provider 与 Test Channel 增加 8 个端到端测试，覆盖 Event → Route → Reduce → Deliver 与 Action → Validate → Provider 完整闭环。
+- 在权威规范中补充 Bridge 编排、顺序、状态提交及失败语义，并同步 Rust 与总控 README；Core 与 JSON Wire v1 保持不变。
+
+关键决策：
+
+- 最小 Bridge 采用单 Provider、单 Channel、多 Session 模型；多端点注册、订阅与扇出留到下一里程碑。
+- Descriptor 与 Capability 在 Bridge 构造时形成固定快照，本阶段不支持动态变更或 Adapter 生命周期管理。
+- Capability 与 Route 失败发生在状态修改前；Reducer 成功后即保留 Aggregate，即使后续 Channel 交接失败也不回滚。
+- 精确重复的最新 Event 返回 `AlreadyApplied` 且不重复交付；本阶段不实现缓冲、重试、ACK 或失败恢复。
+- 只有 `SessionStarted`、`StateChanged`、`ConnectionChanged` 与 `SessionEnded` 会触发可选 Session 视图交付，且 Channel 必须声明 `SESSION_VIEW`。
+- Channel Action 成功交接不会直接修改 Aggregate 或合成 Event；Provider 继续作为 `InteractionResponded` 与 `CommandIssued` 标准化确认 Event 的来源。
+- Bridge 继续采用同步、运行时中立的交接语义，仅依赖 Core，不引入 Serde、异步运行时、Transport 或持久化。
+
+验证结果：
+
+- 新增 8 个 Bridge 闭环测试与既有 3 个 Port Contract Tests、25 个 Core 集成测试、9 个 Protocol v1 集成测试全部通过，共 45 个集成测试；Core 与 Protocol 各 1 个 doctest 通过。
+- Rustfmt、Clippy `-D warnings`、Rustdoc `-D warnings` 与 Release Build 通过。
+- Cargo dependency tree 确认 `agentpulse-bridge` 仍仅依赖 `agentpulse-core`，未新增第三方依赖。
+- 六份权威 JSON Fixture 继续通过语法校验及 Rust 镜像目录逐字节一致性检查；三个仓库的 diff/whitespace 检查通过。
+
+相关变更：
+
+- 本次工作的已提交基线为总控 `58f3996`、Rust `74f77c0` 与协议规范 `792fe27`，均位于对应 `origin/master`。
+- Rust 子模块：Bridge 编排、公开错误/结果类型、端到端闭环测试及 README，尚未提交。
+- 协议规范子模块：Bridge 最小编排规范与 README，尚未提交。
+- 总控仓库：README 与本开发日志，尚未提交；submodule 指针尚未更新。
+
+遗留事项：尚未支持多个 Provider/Channel 的异构注册、显式 Session 订阅、扇出与逐 Channel 失败隔离。
+
+下一目标：实现 Bridge 多端点注册与显式 Session–Channel 订阅/扇出。
 
 ### 2026-08-29 — Provider / Channel 端口与集中 Capability 路由
 
