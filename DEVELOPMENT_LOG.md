@@ -15,23 +15,60 @@
 最后更新：2026-08-29
 
 - 当前阶段：基础架构建设。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放与严格 JSON 协议 v1。
-- 下一目标：定义 Provider / Channel 独立端口与集中 Capability 路由判断。
+- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口与集中 Capability 路由。
+- 下一目标：实现 Bridge 最小闭环。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“Provider / Channel 独立端口与集中 Capability 路由判断”完成时应满足：
+“Bridge 最小闭环”完成时应满足：
 
-- Provider 端口发布标准化 Agent Event，并接收受支持的 Interaction Response 与 Agent Command。
-- Channel 端口消费标准化 Event 或必要的 Session 视图，并提交用户 Response 与 Command。
-- 两类端口只依赖统一领域/协议类型，不能互相依赖，也不能包含具体 Codex、Native、Webhook 或 Bot 行为。
-- Capability 可执行性由 Core/Bridge 的集中路由判断决定，Adapter 只能声明能力，不能各自复制判断规则。
-- 使用 Fake Provider 与 Test Channel 增加端口及 Capability Contract Tests，为后续 Bridge 最小闭环提供边界。
+- Bridge 注册 Provider 与 Channel Port，并维护 Descriptor 与 Session 的关联。
+- Provider Event 经过集中能力校验与 Session Reducer 后，将标准化 Event、路由结果和必要的最新 Session 视图交给 Channel。
+- Channel Response 与 Command 根据当前 Session 和待处理 Request 重新校验，再交给目标 Provider。
+- 使用 Fake Provider 与 Test Channel 覆盖 Event → Reduce → Deliver 以及 Action → Validate → Provider 的端到端闭环。
 
-本阶段不接入真实 Provider、Channel、网络 Transport、数据库或 Relay。
+本阶段仍不接入真实 Provider、Channel、网络 Transport、数据库或 Relay。
 
 ## 历史记录
+
+### 2026-08-29 — Provider / Channel 端口与集中 Capability 路由
+
+状态：已完成，当前总控、Rust 与协议规范三个仓库的相关工作区修改均尚未提交。
+
+完成内容：
+
+- 将 `agentpulse-rs/agentpulse-bridge` 建成 workspace crate，定义独立的 `ProviderPort`、`ProviderEventSink`、`ChannelPort` 与 `ChannelActionSink`。
+- Provider 端口发布标准化 Agent Event 并接收已验证的 Interaction Response 与 Agent Command；Channel 端口消费带集中路由结果的 Event 或完整 Session 视图并提交用户 Action。
+- 在 Core 实现无状态 `CapabilityRouter`、`InteractionRoute`、`ChannelEventRoute` 与结构化 `CapabilityRouteError`，集中校验端点身份、Session 归属、Interaction 语义和端到端 Capability。
+- 补全所有 Agent Event 与 Interaction Response 到所需 Provider/Channel Capability 的映射；普通 Message 保持基础 Event，无额外 Provider Capability。
+- 使用 Fake Provider、Test Channel 和记录型 Sink 增加端口 Contract Tests，并为 Approval、Choice、Text、SubmitPrompt、CancelSession、只读降级及错误关联增加 Capability Contract Tests。
+- 在权威规范中新增端口与能力路由文档，并同步统一领域模型、Rust README 与总控 README；JSON Wire v1 与 Golden Fixtures 不变。
+
+关键决策：
+
+- 端口采用同步、运行时中立的消息交接语义；成功只表示接收或入队，不表示外部 I/O 完成，当前不引入 Tokio 或其他异步运行时。
+- Provider 缺少 Request 发布能力属于非法 Event；Request 发布合法但 Provider 回写或 Channel 输入能力不足时统一降级为 `ReadOnly`。
+- Channel 消费 Core 给出的路由结果，不自行组合能力；Bridge 在实际转发前仍必须重新校验每个 Response 与 Command。
+- 端口只使用统一领域类型与实现本地错误，Provider 和 Channel 不互相依赖，也不包含具体 Adapter 行为。
+- 路由结果属于 Core 内存语义而非 Wire v1 消息；本阶段不增加 Transport、Relay、网络、数据库或持久化要求。
+
+验证结果：
+
+- 3 个 Bridge Port Contract Tests、5 个 Capability Routing Contract Tests、既有 20 个 Core 集成测试及 9 个 Protocol v1 集成测试全部通过，Core 与 Protocol 各 1 个 doctest 通过。
+- Rustfmt、Clippy `-D warnings`、Rustdoc `-D warnings` 与 Release Build 通过。
+- Cargo dependency tree 确认 `agentpulse-bridge` 仅依赖 `agentpulse-core`，Core 与 Bridge 均未引入 Serde、异步运行时或 Transport。
+- 六份权威 JSON Fixture 继续通过语法校验及镜像逐字节一致性检查；三个仓库的 diff/whitespace 检查通过。
+
+相关变更：
+
+- Rust 子模块：Bridge crate、Core 路由策略、Capability 映射、Contract Tests、workspace/lockfile 及 README，尚未提交。
+- 协议规范子模块：端口与能力路由规范、领域模型与 README，尚未提交。
+- 总控仓库：README 与本开发日志，尚未提交；submodule 指针尚未更新。
+
+遗留事项：尚未实现 Provider Event 到 Channel Delivery、Channel Action 到 Provider Handoff 的 Bridge 编排闭环。
+
+下一目标：实现 Bridge 最小闭环。
 
 ### 2026-08-29 — JSON Protocol v1
 

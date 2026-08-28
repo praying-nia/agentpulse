@@ -70,9 +70,9 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-The Rust workspace, channel-neutral domain model, deterministic Core Reducer, and strict JSON protocol v1 are implemented. The current target is the independent Provider/Channel ports and centralized capability routing; Bridge, Relay, transport, Provider, and Channel runtime implementations remain planned.
+The Rust workspace, channel-neutral domain model, deterministic Core Reducer, strict JSON protocol v1, independent Provider/Channel ports, and centralized capability routing are implemented. The next target is the minimal Bridge closed loop; Relay, transport, and concrete Provider and Channel runtime implementations remain planned.
 
-Rust workspace、与 Channel 无关的统一领域模型、确定性 Core Reducer 及严格 JSON 协议 v1 已经完成。当前目标是 Provider/Channel 独立端口与集中 Capability 路由判断；Bridge、Relay、Transport、Provider 与 Channel 运行时实现仍处于规划阶段。
+Rust workspace、与 Channel 无关的统一领域模型、确定性 Core Reducer、严格 JSON 协议 v1、Provider/Channel 独立端口及集中 Capability 路由已经完成。下一目标是 Bridge 最小闭环；Relay、Transport 及具体 Provider/Channel 运行时实现仍处于规划阶段。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 
