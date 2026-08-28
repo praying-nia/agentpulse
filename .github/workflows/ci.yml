@@ -19,10 +19,17 @@ jobs:
     name: Repository and submodules
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    env:
+      SUBMODULES_TOKEN: ${{ secrets.AGENTPULSE_SUBMODULE_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+
+      - name: Check out private submodules
+        if: env.SUBMODULES_TOKEN != ''
+        uses: actions/checkout@v6
         with:
+          token: ${{ env.SUBMODULES_TOKEN }}
           submodules: recursive
 
       - name: Check repository hygiene
@@ -46,7 +53,7 @@ jobs:
             mode="$(git ls-files --stage "$path" | awk '{print $1}')"
             test "$mode" = "160000"
             test "$(git config -f .gitmodules --get "submodule.${path}.branch")" = "master"
-            git -C "$path" rev-parse --verify HEAD
+            test -n "$(git ls-files --stage "$path" | awk '{print $2}')"
           done
 
           git submodule status --recursive
@@ -55,8 +62,8 @@ jobs:
         id: snapshot
         shell: bash
         run: |
-          archive="${GITHUB_REPOSITORY#*/}-${GITHUB_SHA::12}-source.tar.gz"
-          tar --exclude-vcs --exclude="$archive" -czf "$archive" .
+          archive="${RUNNER_TEMP}/${GITHUB_REPOSITORY#*/}-${GITHUB_SHA::12}-source.tar.gz"
+          tar --exclude-vcs -czf "$archive" .
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
 
       - name: Upload CI source artifact

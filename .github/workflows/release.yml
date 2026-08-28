@@ -17,11 +17,20 @@ jobs:
     name: Publish AgentPulse release
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      SUBMODULES_TOKEN: ${{ secrets.AGENTPULSE_SUBMODULE_TOKEN }}
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+
+      - name: Check out private submodules
+        if: env.SUBMODULES_TOKEN != ''
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          token: ${{ env.SUBMODULES_TOKEN }}
           submodules: recursive
 
       - name: Package source
