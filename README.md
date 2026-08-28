@@ -70,6 +70,10 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-AgentPulse is currently in its initial architecture and repository-bootstrap phase.
+The Rust workspace, channel-neutral domain model, deterministic Core Reducer, and strict JSON protocol v1 are implemented. The current target is the independent Provider/Channel ports and centralized capability routing; Bridge, Relay, transport, Provider, and Channel runtime implementations remain planned.
 
-AgentPulse 目前处于架构设计与仓库初始化阶段。
+Rust workspace、与 Channel 无关的统一领域模型、确定性 Core Reducer 及严格 JSON 协议 v1 已经完成。当前目标是 Provider/Channel 独立端口与集中 Capability 路由判断；Bridge、Relay、Transport、Provider 与 Channel 运行时实现仍处于规划阶段。
+
+Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
+
+已经验证的里程碑、当前约束和下一目标统一维护在[开发日志](DEVELOPMENT_LOG.md)中。
