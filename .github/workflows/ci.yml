@@ -1,0 +1,69 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository:
+    name: Repository and submodules
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Check repository hygiene
+        shell: bash
+        run: |
+          test -s README.md
+          git show --check --format= HEAD
+
+      - name: Verify submodule layout
+        shell: bash
+        run: |
+          expected=(
+            agentpulse-rs
+            agentpulse-android
+            agentpulse-ios
+            agentpulse-harmony
+            agentpulse-protocol
+          )
+
+          for path in "${expected[@]}"; do
+            mode="$(git ls-files --stage "$path" | awk '{print $1}')"
+            test "$mode" = "160000"
+            test "$(git config -f .gitmodules --get "submodule.${path}.branch")" = "master"
+            git -C "$path" rev-parse --verify HEAD
+          done
+
+          git submodule status --recursive
+
+      - name: Create CI source snapshot
+        id: snapshot
+        shell: bash
+        run: |
+          archive="${GITHUB_REPOSITORY#*/}-${GITHUB_SHA::12}-source.tar.gz"
+          tar --exclude-vcs --exclude="$archive" -czf "$archive" .
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+
+      - name: Upload CI source artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ github.event.repository.name }}-source-${{ github.sha }}
+          path: ${{ steps.snapshot.outputs.archive }}
+          if-no-files-found: error
+          retention-days: 14
+          compression-level: 0
