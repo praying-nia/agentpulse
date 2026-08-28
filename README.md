@@ -2,27 +2,59 @@
 
 > Stay connected to your coding agents.
 
-AgentPulse is a self-hosted native mobile companion system for AI coding agents. It connects to CLI agents through hooks, plugins, or protocol integrations, normalizes their runtime events, and synchronizes task state to mobile clients.
+AgentPulse is a self-hosted, multi-channel interaction system for AI coding agents. It connects to CLI agents through Providers, normalizes their runtime events and interactions, and delivers them through Channels such as the native AgentPulse apps, Feishu Bot, QQ Bot, and Webhook.
 
-AgentPulse 是面向 AI Coding Agent 的自托管原生移动伴侣系统。它通过 Hook、Plugin 或协议接口连接本地 CLI Agent，统一处理运行状态、Plan/Todo、工具调用、等待输入、权限请求、完成和失败等事件，并将任务状态同步到移动端。
+AgentPulse 是面向 AI Coding Agent 的自托管多渠道交互系统。它通过 Provider 连接本地 CLI Agent，统一处理运行状态、Plan/Todo、工具调用、等待输入、权限请求、完成和失败等事件，再通过 Native App、飞书 Bot、QQ Bot、Webhook 等 Channel 将信息交付给用户。
 
-When an adapter and the underlying agent support it, users can also perform lightweight remote interactions such as approving or rejecting an operation, answering a question, or submitting short text.
+When both the Provider and Channel support a capability, users can also perform remote interactions such as approving or rejecting an operation, answering a question, submitting short text, or sending a simple command.
 
-当 Adapter 与对应 Agent 支持时，用户还可以在移动端批准或拒绝操作、回答问题，或提交简短文本。
+当 Provider 与 Channel 同时支持相应能力时，用户还可以远程批准或拒绝操作、回答问题、提交简短文本或发送简单指令。
+
+## Architecture / 架构
+
+```text
+Codex / Claude Code / OpenCode / DeepSeek Harness
+                         ↓
+                     Provider
+                         ↓
+                 AgentPulse Core
+                         ↓
+                      Channel
+             ┌───────────┼───────────┐
+             ↓           ↓           ↓
+          Native      Feishu/QQ    Webhook
+     Android/iOS/HarmonyOS
+```
+
+- A **Provider** determines how AgentPulse receives information from an AI agent and, where supported, writes responses back to it.
+- A **Channel** determines how AgentPulse presents information to a user and receives that user's response.
+- Provider and Channel implementations are independent and communicate only through the shared domain and protocol models.
+
+- **Provider** 负责 AgentPulse 如何从 AI Agent 获取信息，并在能力允许时向 Agent 回写响应。
+- **Channel** 负责 AgentPulse 如何向用户展示信息并接收用户响应。
+- Provider 与 Channel 彼此独立，仅通过统一的领域模型和协议模型协作。
+
+The native Android, iOS, and HarmonyOS applications remain the full AgentPulse experience, including session browsing, plans, progress, real-time events, approvals, input, LAN connections, and public-network connections through the optional Relay. Bot Channels provide a lightweight, degraded experience constrained by each third-party platform and may communicate without the AgentPulse Relay.
+
+Android、iOS 与 HarmonyOS 原生应用仍然提供完整的 AgentPulse 体验，包括 Session 浏览、Plan、进度、实时事件、审批、输入、LAN 直连，以及通过可选 Relay 进行公网连接。Bot Channel 是受第三方平台能力限制的轻量兼容通道，并且可以不经过 AgentPulse Relay。
 
 ## Repositories / 仓库组成
 
 | Repository | Responsibility / 职责 |
 | --- | --- |
-| `agentpulse-rs` | Shared Rust core, bridge, relay, transports, and CLI agent adapters / Rust 核心、桥接、同步服务、传输层与 Agent 适配器 |
+| `agentpulse-rs` | Shared Rust core, bridge, optional relay, transports, Providers, and Channels / Rust 核心、桥接、可选 Relay、传输层、Provider 与 Channel |
 | `agentpulse-android` | Native Android companion application / Android 原生移动客户端 |
 | `agentpulse-ios` | Native iOS companion application / iOS 原生移动客户端 |
 | `agentpulse-harmony` | Native HarmonyOS companion application / HarmonyOS 原生移动客户端 |
-| `agentpulse-protocol` | Canonical cross-platform protocol specification / 跨平台协议规范 |
+| `agentpulse-protocol` | Canonical, channel-neutral cross-platform protocol specification / 与 Channel 无关的跨平台协议规范 |
 
 This repository is the umbrella repository for the AgentPulse project. Each component remains an independent Git repository and is included here as a submodule.
 
 本仓库是 AgentPulse 的总控仓库。各组件保留独立的 Git 历史，并通过 submodule 聚合到这里。
+
+Bot Channels are implemented inside `agentpulse-rs`; they do not require separate `agentpulse-feishu`, `agentpulse-qq`, or similar repositories.
+
+Bot Channel 直接在 `agentpulse-rs` 内实现，不新增 `agentpulse-feishu`、`agentpulse-qq` 等独立仓库。
 
 ## Getting the source / 获取源码
 
