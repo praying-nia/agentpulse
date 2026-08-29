@@ -34,9 +34,9 @@ Codex / Claude Code / OpenCode / DeepSeek Harness
 - **Channel** 负责 AgentPulse 如何向用户展示信息并接收用户响应。
 - Provider 与 Channel 彼此独立，仅通过统一的领域模型和协议模型协作。
 
-The native Android, iOS, and HarmonyOS applications remain the full AgentPulse experience, including session browsing, plans, progress, real-time events, approvals, input, LAN connections, and public-network connections through the optional Relay. Bot Channels provide a lightweight, degraded experience constrained by each third-party platform and may communicate without the AgentPulse Relay.
+The native Android, iOS, and HarmonyOS applications are intended to become the full AgentPulse experience, including session browsing, plans, progress, real-time events, approvals, input, LAN connections, and public-network connections through the optional Relay. The implemented Native Transport v1 currently provides the complete local read-only subset. Bot Channels provide a lightweight, degraded experience constrained by each third-party platform and may communicate without the AgentPulse Relay.
 
-Android、iOS 与 HarmonyOS 原生应用仍然提供完整的 AgentPulse 体验，包括 Session 浏览、Plan、进度、实时事件、审批、输入、LAN 直连，以及通过可选 Relay 进行公网连接。Bot Channel 是受第三方平台能力限制的轻量兼容通道，并且可以不经过 AgentPulse Relay。
+Android、iOS 与 HarmonyOS 原生应用的目标是提供完整 AgentPulse 体验，包括 Session 浏览、Plan、进度、实时事件、审批、输入、LAN 直连，以及通过可选 Relay 进行公网连接；当前已实现的 Native Transport v1 提供其中完整的本地只读子集。Bot Channel 是受第三方平台能力限制的轻量兼容通道，并且可以不经过 AgentPulse Relay。
 
 ## Repositories / 仓库组成
 
@@ -70,9 +70,9 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-The shared Rust foundation, strict protocol, Bridge, RuntimeHost, and the complete read-only Codex App Server Provider are implemented. The next target is a complete local read-only Native Channel path; Relay, persistence, and other concrete integrations remain undecided or planned.
+The shared Rust foundation now provides a complete local read-only path from the Codex App Server Provider through RuntimeHost/Bridge to a strict, bounded loopback Native Channel. Discovery, exact subscription cursors, live Session/Event delivery, disconnect cleanup, and explicit reconnect are implemented and verified. The next product gap is a real native client; Relay, persistence, and remote connectivity remain separate future milestones.
 
-共享 Rust 基础、严格协议、Bridge、RuntimeHost 与完整只读 Codex App Server Provider 已经完成。下一目标是形成完整的 Native Channel 本地只读链路；Relay、持久化及其他具体集成仍待决策或实现。
+共享 Rust 基础现已形成从 Codex App Server Provider 经 RuntimeHost/Bridge 到严格、有界 Loopback Native Channel 的完整本地只读链路；Discovery、精确 Subscription Cursor、Live Session/Event 投递、断线清理与显式重连均已实现并验证。下一个产品缺口是真实原生客户端；Relay、持久化与远程连接仍是独立的未来里程碑。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 

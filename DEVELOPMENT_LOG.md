@@ -14,24 +14,71 @@
 
 最后更新：2026-08-29
 
-- 当前阶段：基础运行时与首个真实 Provider 已经闭合，准备形成首条面向用户的本地只读 Channel 链路。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由、Bridge 多端点编排、Runtime Host，以及完整只读 Codex App Server Provider。
-- 下一目标：实现 Native Channel 的本地只读 Transport 与 Session/Event 同步闭环。
+- 当前阶段：Rust 侧首条 Codex → RuntimeHost/Bridge → Native Channel 本地只读链路已经闭合，下一步补齐首个真实原生客户端与可安全触达电脑端的连接方式。
+- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由、Bridge 多端点编排、Runtime Host、完整只读 Codex App Server Provider、Loopback WebSocket Transport，以及完整本地只读 Native Channel v1。
+- 下一目标：实现 Android 原生客户端与认证 LAN 直连的完整只读 Session/Event 展示闭环。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“Native Channel 的本地只读 Transport 与 Session/Event 同步闭环”完成时应满足：
+“Android 原生客户端与认证 LAN 直连的完整只读 Session/Event 展示闭环”完成时应满足：
 
-- 实现首个具体 Native `ChannelPort` 与本地 `Transport`，让一个独立本地客户端能够发现当前 Session、订阅 Session，并持续接收标准 Session 视图与 Event。
-- 定义完整的连接握手、协议版本、端点身份、初始同步边界、消息分帧、大小限制、断线清理与显式重连语义；不依赖数据库或 Relay。
-- 继续复用现有 JSON Wire v1 领域消息；若握手或同步控制消息确有必要，先在权威协议中定义并以跨语言 Fixture 固定，不将运行时私有状态冒充领域 Event。
-- 首版保持只读，不开放 Native 用户 Action；Channel 只声明实际完成的展示与实时同步 Capability。
-- 使用独立 Fake Native Client 完成 Codex Fixture → Provider → RuntimeHost/Bridge → Native Transport 的进程内端到端测试，并补充真实本地 Socket 冒烟验证。
+- 初始化可构建、可安装的 Android 工程，实现与 Native Transport v1 Golden Fixtures 一致的严格 Kotlin 编解码、连接状态机、错误模型和有界内存状态，不将测试客户端当成产品客户端。
+- 在 Rust 端设计并实现可供手机使用的认证 LAN 直连与明确配对流程；连接必须具备端点身份校验、凭据生命周期、消息大小限制、心跳、断线清理和显式重连，不能直接扩大现有无认证 Loopback Listener。
+- Android 客户端完成配对、连接、Provider/Session Discovery、Session 列表、Session 当前状态与实时 Event 展示，并按 Baseline Cursor 正确替换或推进视图；只读 Interaction 必须明确不可操作。
+- 保持本阶段只读，不开放审批、输入、Command、Relay、数据库或离线历史；客户端仅声明并呈现完整实现的能力。
+- 使用真实 Android Emulator 或设备完成 Codex Fixture → Provider → RuntimeHost/Bridge → 认证 LAN Transport → Android UI 的端到端验证，并覆盖首次配对、错误凭据、重连、进程重启、慢客户端和协议不兼容失败路径。
 
-下一阶段不接入公网、Relay、数据库、持久化、Bot Channel 或 Provider 写回；完整性集中在首条本地只读产品链路。
+下一阶段不接入公网、Relay、数据库、持久化、Bot Channel 或 Provider 写回；完整性集中在首个用户可实际使用的 Android 本地网络只读产品链路。
 
 ## 历史记录
+
+### 2026-08-29 — Native Channel 本地只读 Transport 与同步闭环
+
+状态：已完成并通过验证；本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- 扩展 Bridge 与 RuntimeHost 的 Channel 入口：提供有序 Provider/Session Discovery Snapshot、每个 Session 的精确最新 Event Cursor、显式 Subscribe/Unsubscribe，并在 Subscribe Result 中返回 Baseline Sequence。
+- 增加 `Persistent` 与 `SourceGeneration` 两种订阅生命周期；RuntimeHost 在停止或释放 Connection-oriented Channel Source 前先清除该 Channel 的 Generation-scoped Subscription，避免断线 Source 继续保留不可见投递关系。
+- 新增 `agentpulse-transport`，实现只允许 Loopback Bind 的同步 WebSocket Server；严格校验固定 Path 与 Subprotocol，限制完整消息大小，拒绝 Binary Application Message，并提供有界 Handshake/I/O Poll、Ping、Close 与可停止 Listener 行为。
+- 新增完整 `agentpulse-channel-native` Port/Source/Handle Factory：默认绑定 `127.0.0.1:0`，只允许一个活动客户端，公开实际监听地址、健康状态、有界计数器、活动 Client ID 与最后错误。
+- Native Channel 精确声明 `NOTIFICATION | SESSION_VIEW | REALTIME_SYNC`，不声明或接受任何 Action；Interaction Event 只能消费 Bridge 给出的 `ObserveOnly` 或 `InteractionReadOnly` Route。
+- 定义严格 Native Transport v1：完成 Client/Server Hello、Discovery Batch、Subscribe/Unsubscribe、Subscription Cursor、Domain Delivery Context、稳定 Error Code 与显式重连状态机；全部 Domain Payload 继续嵌套未经改写的 JSON Wire v1 Envelope。
+- 实现 Cursor-safe Subscription Ordering：先建立 Bridge 订阅并捕获当前 Baseline Sequence，再严格发送 Subscription Result、Baseline Session 与竞态期间缓冲的 Live Event；不重放历史 Event，也不允许 Live Event 越过 Baseline。
+- 对输出采用 256 Frame 默认有界 Queue，对输入输出采用 1 MiB 默认完整消息限制；慢客户端、队列溢出、协议错误、Handshake/Idle Timeout 与网络故障都会执行有界关闭和 Subscription 清理，不进行静默丢帧或隐式重试。
+- 新增 11 份权威 Native v1 跨语言 Golden Fixtures 及 Rust 镜像，覆盖全部四种 Client Message 与当前 Server Message Family，并验证严格解码、语义无漂移重编码和总控布局下逐字节一致。
+- 使用独立 Tungstenite Client 覆盖真实 TCP/WebSocket Hello → Discovery → Subscribe → Baseline → Live Event/Session → Disconnect Cleanup → Reconnect 流程，并覆盖错误 Path、第二 Client Busy 与不兼容协议 Hello。
+- 将捕获的真实 Codex App Server Fixture 接入完整 Provider → RuntimeHost/Bridge → Native Channel → 独立 WebSocket Client 链路，验证 sequence 2–6 实时 Event 与最终完成消息均越过实际 Socket 到达客户端。
+- 新增 Native Transport 权威双语规范、Transport/Native crate 使用说明，并同步协议、Rust 与总控 README 的当前能力和边界。
+
+关键决策：
+
+- 首版 Transport 选择 Loopback WebSocket，固定 Path `/agentpulse/native/v1` 与 Subprotocol `agentpulse.native.v1`；默认使用 Ephemeral Port，既不开放 LAN，也不以无认证 Listener 冒充远程连接能力。
+- Native 控制协议与 JSON Wire v1 领域协议独立版本化；控制元数据位于外层，Provider Descriptor、Channel Descriptor、Session 与 Event 保持既有严格领域 Envelope，不复制第二套领域 Schema。
+- 一个 Native Channel 实例只服务一个显式完成 Hello 的 Client。重连必须新建 WebSocket 并重新执行 Hello、Discovery 与 Subscribe，不持久化或猜测恢复旧订阅。
+- Discovery 只给出稳定快照与 Cursor，不隐式订阅；Subscribe 只接受最近 Discovery 中的 Session，并以 Baseline Cursor 作为客户端替换当前 Session View 的权威边界。
+- Channel 全程只读，不提供占位 Action Message，也不声明 Approval/Input/Remote Command Capability；完整性体现在发现、同步、实时流、清理、背压和失败语义全部闭合。
+- Worker 使用标准库线程和同步 RuntimeHost Handle，不引入异步运行时；Transport 只依赖现有无 TLS Tungstenite Handshake 能力。
+- 本阶段不引入数据库、持久化、历史回放、ACK、自动重试、TLS、认证、Relay、LAN、公网、Native UI 或 Provider 写回。
+
+验证结果：
+
+- 全 Workspace 73 个常规单元/集成测试与 2 个 Doctest 全部通过；其中包含 18 个 Bridge/RuntimeHost、7 个 Native Channel、25 个 Core、9 个 Protocol、12 个 Codex Provider 与 2 个 Transport 测试。
+- 在允许创建 Loopback Socket 的环境中，2 个独立 Native Client 真实 Socket 测试全部通过；另行通过 1 个捕获 Codex Fixture 到 Native WebSocket 的完整端到端测试。
+- Rustfmt Check、全 Workspace `cargo check --all-targets`、Clippy `-D warnings`、Rustdoc `-D warnings`、锁定依赖的离线测试与 Release Build 全部通过。
+- 11 份权威 Native Fixture 与 11 份 Rust 镜像均通过 JSON 语法校验；Fixture 测试同时验证语义 Round-trip 与总控布局下逐字节一致。
+- 依赖树确认 Native Channel 直接复用 Core、Bridge、Protocol、Transport、Serde JSON、Thiserror、UUID 与仅启用 Handshake 的 Tungstenite；Transport 只直接依赖 Thiserror 与 Tungstenite，未引入 Tokio、TLS、数据库或持久化依赖。
+- 总控、Rust 与协议规范三个仓库的 Diff/Whitespace Check 全部通过。
+
+相关提交：
+
+- 本次工作的已提交基线为总控 `4774824`、Rust `bb38276` 与协议规范 `d4e6442`，均位于对应 `origin/master`。
+- 本里程碑的实现、测试、Fixtures 与文档位于上述基线后的工作区，提交哈希留待后续提交时记录。
+
+遗留事项：Rust 侧本地只读服务链路已经完整，但 Android、iOS 与 HarmonyOS 仓库仍只有 Scaffold；Loopback Listener 也不能直接供手机使用。因此当前尚无真实原生 UI，也没有认证 LAN、Relay 或公网连接。
+
+下一目标：实现 Android 原生客户端与认证 LAN 直连的完整只读 Session/Event 展示闭环。
 
 ### 2026-08-29 — 完整只读 Codex App Server Provider
 
