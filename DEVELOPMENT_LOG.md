@@ -15,23 +15,66 @@
 最后更新：2026-08-29
 
 - 当前阶段：基础架构建设。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由与 Bridge 最小闭环。
-- 下一目标：实现 Bridge 多端点注册与显式 Session–Channel 订阅/扇出。
+- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由，以及带显式 Session–Channel 订阅的 Bridge 多端点编排。
+- 下一目标：定义并实现 Bridge Runtime Host 与 Adapter 生命周期契约。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“Bridge 多端点注册与显式 Session–Channel 订阅/扇出”完成时应满足：
+“Bridge Runtime Host 与 Adapter 生命周期契约”完成时应满足：
 
-- Bridge 可注册多个异构 Provider 与 Channel Port，以强类型 ID 稳定查找 Descriptor，并拒绝重复注册。
-- Session 明确关联所属 Provider；Channel 通过显式订阅与取消订阅决定接收哪些 Session 的 Event 与最新视图。
-- Provider Event 只扇出到订阅目标；单个 Channel 交接失败不会阻止其他 Channel，并返回逐目标交付结果。
-- Channel Action 根据来源 Channel、目标 Session 与所属 Provider 解析唯一链路，继续执行集中 Capability 与 Request 校验。
-- 使用多个 Fake Provider 与 Test Channel 覆盖订阅、取消订阅、无串流、失败隔离及反向 Action 路由。
+- Runtime Host 明确拥有 Bridge、Adapter 执行实例与事件入口，避免 Adapter 与 Bridge 形成自引用所有权。
+- Provider Event Source 与 Channel Action Source 可通过受控句柄驱动现有 Bridge，并保留同步端口的接收语义。
+- 定义显式、幂等的启动与停止状态，以及重复启动、停止失败和 Adapter 异常的结构化结果。
+- 单个 Adapter 生命周期失败不会破坏其他端点或已归约 Session；停止后的端点不再接受新的入口消息。
+- 使用异构 Fake Adapter 验证启动/停止、事件泵、Action 入口、失败隔离与资源释放顺序。
 
-下一阶段仍不接入 Adapter 自动发现、真实 Provider、真实 Channel、网络 Transport、数据库或 Relay。
+下一阶段仍不接入 Adapter 自动发现、真实 Provider、真实 Channel、网络 Transport、数据库或 Relay，也不预先选择异步运行时。
 
 ## 历史记录
+
+### 2026-08-29 — Bridge 多端点注册与显式 Session–Channel 订阅/扇出
+
+状态：已完成并通过验证；本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- 将单 Provider、单 Channel 的泛型 `Bridge<P, C>` 演进为唯一的非泛型多端点 `Bridge`，通过私有类型擦除注册并拥有多个具体类型及错误类型不同的 Provider/Channel Port。
+- 注册时只获取一次 Descriptor 快照，以强类型 ID 提供稳定查询与有序遍历，并使用结构化错误拒绝 Provider 或 Channel 重复注册。
+- Session 继续由 sequence 1 的 `SessionStarted` 创建并绑定唯一 Provider；Channel 只能显式订阅已存在 Session，不存在隐式全局订阅。
+- 支持 `SESSION_VIEW` 的 Channel 在订阅生效前必须先接收当前 `AgentSession` 视图；初始交付失败不会留下活动订阅，重复订阅与取消订阅保持幂等。
+- Provider Event 在状态修改前完成全部订阅目标的集中路由，Aggregate 只归约一次，再按 Channel ID 稳定扇出 Event 与可选 Session 视图。
+- 单个 Channel 失败不会阻止其他目标；部分失败返回包含所有成功与失败目标的有序报告，并保留 Adapter 原始错误链和已经归约的状态。
+- Channel Action 必须来自已注册且仍订阅目标 Session 的 Channel，再根据 Session 所属 Provider 执行 Request、关联与 Capability 校验并完成唯一反向交接。
+- 将 Bridge 端到端测试扩展为 10 个多端点契约测试，并保留 3 个独立端口测试；Core 与 JSON Wire v1 未改变。
+- 在权威规范中定义手工注册、订阅初始视图、稳定扇出、逐目标失败与反向 Action 语义，并同步 Rust 与总控 README。
+
+关键决策：
+
+- 基础阶段直接演进唯一 `Bridge` 公共模型，不保留旧泛型 Bridge 与新多端点 Bridge 两套长期并行的编排语义。
+- 类型擦除仅存在于 Bridge 私有注册边界；公共接口继续使用强类型 ID、领域对象和结构化结果，不暴露具体 Adapter 或 `Any` 下转型。
+- 订阅仅接受已存在 Session；支持 `SESSION_VIEW` 时先同步当前 Session 视图再提交订阅，保证后续增量 Event 不会先于可用的当前基线到达。
+- 本阶段不补发历史 Event；不支持 Session 视图的 Channel 从订阅后的未来 Event 开始消费。
+- 订阅同时是下行投递与反向 Action 的路由边界，取消订阅会立即撤销该 Channel 对 Session 的 Action 权限。
+- Event 交付失败会跳过同一目标的 Session 视图，Session 视图失败则保留已经成功的 Event；两者均不阻断后续 Channel。
+- 精确重复 Event 仍只返回 `AlreadyApplied`，不会重发到新订阅者，也不会重试此前失败目标。
+- Bridge 继续保持同步、内存和运行时中立，仅依赖 Core；未增加 Transport、Serde、异步运行时或持久化依赖。
+
+验证结果：
+
+- 10 个 Bridge 多端点测试、3 个端口测试、25 个 Core 集成测试与 9 个 Protocol v1 集成测试全部通过，共 47 个集成测试；Core 与 Protocol 各 1 个 doctest 通过。
+- Rustfmt、Clippy `-D warnings`、Rustdoc `-D warnings` 与 Release Build 通过。
+- Cargo dependency tree 确认 `agentpulse-bridge` 仍只有 `agentpulse-core` 一个直接依赖。
+- 六份权威 JSON Fixture 继续通过语法校验及 Rust 镜像目录逐字节一致性检查；三个仓库的 diff/whitespace 检查通过。
+
+相关提交：
+
+- 本次工作的已提交基线为总控 `794d595`、Rust `515ba0c` 与协议规范 `94e0137`，均位于对应 `origin/master`。
+- 本里程碑的实现、测试与文档位于上述基线后的工作区，提交哈希留待后续提交时记录。
+
+遗留事项：当前基础已经覆盖领域语义、状态归约、严格线协议、端口、能力路由及多端点内存编排，但尚无负责启动、停止并驱动 Adapter 的 Runtime Host；真实 Provider/Channel、Transport、原生客户端和可选 Relay 也尚未形成产品级端到端闭环。
+
+下一目标：定义并实现 Bridge Runtime Host 与 Adapter 生命周期契约。
 
 ### 2026-08-29 — Bridge 最小闭环
 
