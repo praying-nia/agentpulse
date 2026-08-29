@@ -14,24 +14,67 @@
 
 最后更新：2026-08-29
 
-- 当前阶段：基础运行时已经闭合，准备进入首个真实 Provider 接入。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由、带显式 Session–Channel 订阅的 Bridge 多端点编排，以及运行时中立的 Runtime Host 与 Adapter 生命周期托管。
-- 下一目标：实现最小只读 Codex Provider Adapter。
+- 当前阶段：基础运行时与首个真实 Provider 已经闭合，准备形成首条面向用户的本地只读 Channel 链路。
+- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由、Bridge 多端点编排、Runtime Host，以及完整只读 Codex App Server Provider。
+- 下一目标：实现 Native Channel 的本地只读 Transport 与 Session/Event 同步闭环。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“最小只读 Codex Provider Adapter”完成时应满足：
+“Native Channel 的本地只读 Transport 与 Session/Event 同步闭环”完成时应满足：
 
-- 先核实并记录 Codex 当前官方可用的本地集成接口，再选择最小稳定输入边界；不以 PTY/TUI 抓取作为默认方案。
-- 新增首个具体 Provider Adapter，成对实现 `ProviderPort` 与 `ProviderEventSource`，并可由现有 `RuntimeHost` 显式注册和驱动。
-- 将 Codex 的会话开始、状态变化、普通消息与结束结果转换为现有标准领域 Event，保持 Session、Sequence、Timestamp 与 Provider 归属不变量。
-- `ProviderDescriptor` 只声明已验证的只读能力；本阶段不伪装支持 Interaction Response、Command 或其他尚未实现的写回能力。
-- 使用确定性 Fake/捕获 Fixture 验证 Codex 输入到 Bridge Aggregate 的完整路径，不要求测试环境安装 Codex 或访问外部网络。
+- 实现首个具体 Native `ChannelPort` 与本地 `Transport`，让一个独立本地客户端能够发现当前 Session、订阅 Session，并持续接收标准 Session 视图与 Event。
+- 定义完整的连接握手、协议版本、端点身份、初始同步边界、消息分帧、大小限制、断线清理与显式重连语义；不依赖数据库或 Relay。
+- 继续复用现有 JSON Wire v1 领域消息；若握手或同步控制消息确有必要，先在权威协议中定义并以跨语言 Fixture 固定，不将运行时私有状态冒充领域 Event。
+- 首版保持只读，不开放 Native 用户 Action；Channel 只声明实际完成的展示与实时同步 Capability。
+- 使用独立 Fake Native Client 完成 Codex Fixture → Provider → RuntimeHost/Bridge → Native Transport 的进程内端到端测试，并补充真实本地 Socket 冒烟验证。
 
-下一阶段不接入真实 Channel、网络 Transport、数据库或 Relay，也不扩展 JSON Wire v1；Codex 写回、自动发现与进程托管只有在官方接口核实后才能列入后续目标。
+下一阶段不接入公网、Relay、数据库、持久化、Bot Channel 或 Provider 写回；完整性集中在首条本地只读产品链路。
 
 ## 历史记录
+
+### 2026-08-29 — 完整只读 Codex App Server Provider
+
+状态：已完成并通过验证；本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- 将“每个阶段都交付边界明确、真实可用、测试完整的软件能力，而非演示性质的小实现”加入仓库维护原则，同时要求完整性服从显式范围并在选择下一目标前审视总体产品进度。
+- 核实并采用官方 Codex App Server，新增 `agentpulse-provider-codex` workspace crate，成对实现只读 `ProviderPort` 与 `ProviderEventSource`，并提供配置、运行状态、计数器和共享 Unix URI 的公开构建接口。
+- 固定支持 `codex-cli 0.150.1`，启动前精确检查版本；纳入由该版本生成的完整稳定 JSON Schema，按客户端请求/通知、服务端请求/通知、通用响应/错误及方法响应类型离线严格校验全部原始帧。
+- Provider 在 Linux/macOS 创建私有 `0700` 运行目录，托管 `codex app-server --listen unix://...`，完成 Unix WebSocket Upgrade、`initialize/initialized`、全部显式 `thread/resume`、实时读取、停止、子进程回收和仅限自有目录的安全清理。
+- 每个 Codex UUIDv7 Thread 稳定映射为同值 AgentPulse Session ID；将恢复快照、Thread/Turn 状态、非空 Agent Message、连接变化及 Completed/Interrupted/Failed 结果归一化为现有 Event，并在重启时重新对齐当前连接与执行状态而不重复创建 Session。
+- 对 Schema 合法但领域不承载的消息和未配置 Thread 显式记为 `ValidatedUnmapped`；对服务端请求返回 JSON-RPC `-32601` 只读错误，不伪装审批、输入或命令能力，也不回放 `thread/resume` 内的历史 Turn。
+- 保持 Bridge 提交语义：Channel 部分投递失败时 Event 与 Sequence 仍然提交并继续读取；协议、Socket 或进程故障会在入口仍有效时将全部已跟踪 Session 标为 `Disconnected`，保存终态错误并等待显式 RuntimeHost stop/start。
+- 增加版本/路径保护、严格 Schema、请求关联、捕获实时流、完整状态/消息/结果链、多 Thread 部分恢复、Channel 部分投递、断线、重启和清理测试；增加独立 Unix WebSocket 测试及可选真实 Codex initialize 冒烟测试。
+- 在权威协议中记录 Codex 拓扑、兼容矩阵、生命周期、字段映射、历史/只读边界与失败语义，并同步 Rust、总控 README 及 Provider 使用说明。
+
+关键决策：
+
+- 选择由 Provider 托管的共享 Unix App Server，而不是 `codex exec`、Hook 或 PTY/TUI 抓取；AgentPulse 与 `codex --remote unix://...` 使用同一 App Server，首版平台边界为 Linux/macOS。
+- 完全严格兼容策略采用“精确 CLI 版本 + 随版本生成的完整 Schema”，不对未知版本或未知原始消息做猜测兼容；升级必须同时更新版本常量、Schema、Fixture 与测试。
+- “完整原始流”表示每个 App Server 帧均被分类、Schema 校验和关联；不表示将所有 Codex 私有类型强行扩展到 AgentPulse 领域模型。只有既定 Session/State/Message/Outcome 语义产生标准 Event。
+- 显式 Thread 列表是唯一发现边界；一个 Thread 对应一个 Session，Codex `sessionId` 线程树不合并 AgentPulse Session。
+- Provider 声明的唯一扩展 Capability 是 `SESSION_STATE`；普通 Message 使用基础 Event 能力，Interaction Response 与 Agent Command 始终返回结构化只读错误。
+- 不实施隐式进程自动重启，避免无提示中断共享 Remote Client；Provider Handle 负责暴露异步失败，调用方通过 RuntimeHost 显式恢复。
+- stderr 诊断仅保留有界尾部，并且读取线程只能有界等待，不能让诊断捕获破坏 Provider 的停止超时。
+
+验证结果：
+
+- 全 workspace 的 17 个 Bridge、25 个 Core、9 个 Protocol 与 12 个 Codex Provider 常规测试全部通过，共 63 个单元/集成测试；Core 与 Protocol 各 1 个 doctest 通过。
+- 另行在允许创建 Unix Socket 的环境中通过真实 Unix WebSocket 文本帧测试，并使用本机精确版本 `codex-cli 0.150.1` 通过受管 App Server `initialize/initialized` 冒烟测试；常规测试仍不要求安装 Codex 或访问网络。
+- Rustfmt check、全 workspace Clippy `-D warnings`、Rustdoc `-D warnings`、锁定依赖的离线测试与 Release Build 全部通过。
+- Schema SHA-256 为 `18ba0e2282f69f7b3a05ffdc8ab0801c1468f25d72de3b4a37f1c8be67432a1d`；Schema 与三份捕获 Fixture 均通过 JSON 语法及严格处理测试，三个仓库的 diff/whitespace 检查通过。
+- 依赖树确认 Provider 直接依赖 Core、Bridge、离线 `jsonschema`、Serde JSON、Thiserror 与仅启用 Handshake 的 `tungstenite`；未引入 Tokio、TLS、HTTP Schema 获取、数据库或持久化依赖。
+
+相关提交：
+
+- 本次工作的已提交基线为总控 `e96f63e`、Rust `4ebb120` 与协议规范 `e63cde9`，均位于对应 `origin/master`。
+- 本里程碑的实现、测试、Schema 与文档位于上述基线后的工作区，提交哈希留待后续提交时记录。
+
+遗留事项：统一模型、协议、Bridge、RuntimeHost 与首个真实 Provider 已经闭合，但还没有任何真实 Channel 或 AgentPulse 客户端连接，因此尚未形成面向用户的产品级端到端链路。
+
+下一目标：实现 Native Channel 的本地只读 Transport 与 Session/Event 同步闭环。
 
 ### 2026-08-29 — Runtime Host 与 Adapter 生命周期契约
 

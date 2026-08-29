@@ -70,9 +70,9 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-The Rust workspace, channel-neutral domain model, deterministic Core Reducer, strict JSON protocol v1, independent Provider/Channel ports, centralized capability routing, multi-endpoint Bridge orchestration, and runtime-neutral Adapter lifecycle hosting are implemented. The next target is a minimal read-only Codex Provider; Relay, transport, and concrete Channel runtime implementations remain planned.
+The shared Rust foundation, strict protocol, Bridge, RuntimeHost, and the complete read-only Codex App Server Provider are implemented. The next target is a complete local read-only Native Channel path; Relay, persistence, and other concrete integrations remain undecided or planned.
 
-Rust workspace、与 Channel 无关的统一领域模型、确定性 Core Reducer、严格 JSON 协议 v1、Provider/Channel 独立端口、集中 Capability 路由、Bridge 多端点编排与运行时中立的 Adapter 生命周期托管已经完成。下一目标是最小只读 Codex Provider；Relay、Transport 及具体 Channel 运行时实现仍处于规划阶段。
+共享 Rust 基础、严格协议、Bridge、RuntimeHost 与完整只读 Codex App Server Provider 已经完成。下一目标是形成完整的 Native Channel 本地只读链路；Relay、持久化及其他具体集成仍待决策或实现。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 
