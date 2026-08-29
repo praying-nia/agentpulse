@@ -14,24 +14,67 @@
 
 最后更新：2026-08-29
 
-- 当前阶段：基础架构建设。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由，以及带显式 Session–Channel 订阅的 Bridge 多端点编排。
-- 下一目标：定义并实现 Bridge Runtime Host 与 Adapter 生命周期契约。
+- 当前阶段：基础运行时已经闭合，准备进入首个真实 Provider 接入。
+- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由、带显式 Session–Channel 订阅的 Bridge 多端点编排，以及运行时中立的 Runtime Host 与 Adapter 生命周期托管。
+- 下一目标：实现最小只读 Codex Provider Adapter。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“Bridge Runtime Host 与 Adapter 生命周期契约”完成时应满足：
+“最小只读 Codex Provider Adapter”完成时应满足：
 
-- Runtime Host 明确拥有 Bridge、Adapter 执行实例与事件入口，避免 Adapter 与 Bridge 形成自引用所有权。
-- Provider Event Source 与 Channel Action Source 可通过受控句柄驱动现有 Bridge，并保留同步端口的接收语义。
-- 定义显式、幂等的启动与停止状态，以及重复启动、停止失败和 Adapter 异常的结构化结果。
-- 单个 Adapter 生命周期失败不会破坏其他端点或已归约 Session；停止后的端点不再接受新的入口消息。
-- 使用异构 Fake Adapter 验证启动/停止、事件泵、Action 入口、失败隔离与资源释放顺序。
+- 先核实并记录 Codex 当前官方可用的本地集成接口，再选择最小稳定输入边界；不以 PTY/TUI 抓取作为默认方案。
+- 新增首个具体 Provider Adapter，成对实现 `ProviderPort` 与 `ProviderEventSource`，并可由现有 `RuntimeHost` 显式注册和驱动。
+- 将 Codex 的会话开始、状态变化、普通消息与结束结果转换为现有标准领域 Event，保持 Session、Sequence、Timestamp 与 Provider 归属不变量。
+- `ProviderDescriptor` 只声明已验证的只读能力；本阶段不伪装支持 Interaction Response、Command 或其他尚未实现的写回能力。
+- 使用确定性 Fake/捕获 Fixture 验证 Codex 输入到 Bridge Aggregate 的完整路径，不要求测试环境安装 Codex 或访问外部网络。
 
-下一阶段仍不接入 Adapter 自动发现、真实 Provider、真实 Channel、网络 Transport、数据库或 Relay，也不预先选择异步运行时。
+下一阶段不接入真实 Channel、网络 Transport、数据库或 Relay，也不扩展 JSON Wire v1；Codex 写回、自动发现与进程托管只有在官方接口核实后才能列入后续目标。
 
 ## 历史记录
+
+### 2026-08-29 — Runtime Host 与 Adapter 生命周期契约
+
+状态：已完成并通过验证；本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- 在 `agentpulse-bridge` 新增运行时中立的 `RuntimeHost`，成对注册并分别拥有 Bridge 内的 Provider/Channel Port 与 Host 内的 Provider Event/Channel Action Source，避免 Source 直接拥有 Bridge。
+- 定义 `ProviderEventSource` 与 `ChannelActionSource` 生命周期契约，并为每个启动周期签发绑定强类型端点身份的可克隆受控句柄。
+- Provider Event 与 Channel Action 句柄通过弱 Host 引用同步驱动现有 Bridge；Host 释放、端点停止、旧启动周期及身份不匹配均返回结构化入口错误。
+- 使用标准库同步原语串行化不同线程的 Bridge 访问，并明确拒绝同线程 Port 回调同步重入，避免形成自引用所有权或同步死锁。
+- 定义 Host 与逐 Adapter 的停止、运行、启动失败和停止失败状态，以及包含完整有序逐端点结果并保留 Adapter 原始错误链的生命周期报告。
+- 启动按注册顺序尝试全部 Source；单点失败只撤销自身入口，不回滚其他端点或启动期间已经归约的 Session，但再次启动前必须先完成完整停止。
+- 停止先撤销全部当前入口，再按注册逆序尝试 Source；停止失败不阻断其他端点，重复停止只重试失败目标，成功停止保留 Port、Session Aggregate 与订阅。
+- Host 释放时反序尽力停止并先释放 Source、后释放 Bridge/Port；每次重启生成新句柄，旧句柄不会随新周期重新生效。
+- 新增 4 个异构 Fake Adapter 端到端契约测试，覆盖事件泵、Action 入口、启动/停止幂等、失败隔离、错误链、同步重入、跨周期状态、入口撤销和资源释放顺序。
+- 在权威规范中定义 Runtime Host 所有权、入口与生命周期语义，并同步 Rust、协议规范与总控 README。
+
+关键决策：
+
+- Runtime Host 采用 Port 与 Source 成对注册，不接收可任意挂载 Source 的预构建 Bridge，保证端点身份和生命周期始终一致。
+- 生命周期只控制 Source 执行与 Source 到 Bridge 的入口；成功停止不会注销 Port、清空 Session/订阅、重放历史 Event 或自动重新同步 Channel。
+- 句柄按启动周期隔离并弱引用 Host，既不会形成 Source–Host 所有权环，也不会让旧 Worker 在重启后意外恢复写入权限。
+- 启动失败是非事务性的：失败前已由 Bridge 接收的合法 Event 保持生效；该 Source 随后进入启动失败状态并等待反序停止清理。
+- 部分启动失败保留成功端点继续运行，不执行全局回滚；部分停止失败进入 `StopFailed`，完成失败目标清理前拒绝再次启动。
+- 跨线程入口同步串行执行；同步重入显式失败。本阶段不增加队列、缓冲、自动重试、背压、异步运行时或第三方依赖。
+- 未显式停止便释放 Host 时执行反序尽力清理，但只有显式 `stop` 能向调用方返回 Adapter 清理失败。
+
+验证结果：
+
+- 4 个 Runtime Host 契约测试、10 个 Bridge 多端点测试、3 个端口测试、25 个 Core 集成测试与 9 个 Protocol v1 集成测试全部通过，共 51 个集成测试；Core 与 Protocol 各 1 个 doctest 通过。
+- Rustfmt、Clippy `-D warnings`、Rustdoc `-D warnings` 与 Release Build 通过。
+- Cargo dependency tree 确认 `agentpulse-bridge` 仍只有 `agentpulse-core` 一个直接依赖，未增加异步运行时、Serde、Transport 或持久化依赖。
+- 六份权威 JSON Fixture 继续通过语法校验及 Rust 镜像目录逐字节一致性检查；三个仓库的 diff/whitespace 检查通过。
+
+相关提交：
+
+- 本次工作的已提交基线为总控 `a21b29d`、Rust `40e6b7a` 与协议规范 `5b1338c`，均位于对应 `origin/master`。
+- 本里程碑的实现、测试与文档位于上述基线后的工作区，提交哈希留待后续提交时记录。
+
+遗留事项：领域语义、状态归约、严格线协议、多端点 Bridge 与本地 Runtime 生命周期基础已经闭合，但仍没有任何真实 Provider/Channel、Transport、原生客户端连接或 Relay，因此尚未形成产品级端到端链路。
+
+下一目标：实现最小只读 Codex Provider Adapter。
 
 ### 2026-08-29 — Bridge 多端点注册与显式 Session–Channel 订阅/扇出
 
