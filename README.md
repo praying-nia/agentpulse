@@ -70,9 +70,9 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-The shared Rust foundation now provides a complete local read-only path from the Codex App Server Provider through RuntimeHost/Bridge to a strict, bounded loopback Native Channel. Discovery, exact subscription cursors, live Session/Event delivery, disconnect cleanup, and explicit reconnect are implemented and verified. The next product gap is a real native client; Relay, persistence, and remote connectivity remain separate future milestones.
+AgentPulse now provides a complete local read-only product path from the managed Codex App Server through RuntimeHost/Bridge and an authenticated TLS/LAN Native Channel to the native Android app. Pairing, Host identity and per-device credential lifecycle, strict baseline/live cursor synchronization, bounded delivery, heartbeat cleanup, explicit reconnect, and encrypted Android credential recovery are implemented and verified on a physical Android 15 device over a phone-hotspot LAN. iOS and HarmonyOS remain scaffolds; Relay, persistence, public-network connectivity, and write-back capabilities remain separate future milestones.
 
-共享 Rust 基础现已形成从 Codex App Server Provider 经 RuntimeHost/Bridge 到严格、有界 Loopback Native Channel 的完整本地只读链路；Discovery、精确 Subscription Cursor、Live Session/Event 投递、断线清理与显式重连均已实现并验证。下一个产品缺口是真实原生客户端；Relay、持久化与远程连接仍是独立的未来里程碑。
+AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 TLS/LAN Native Channel 到 Android 原生 App 的完整本地只读产品链路；配对、Host 身份与逐设备凭据生命周期、严格 Baseline/Live Cursor 同步、有界投递、心跳清理、显式重连及 Android 加密凭据恢复均已在 Android 15 真机与手机热点 LAN 上完成验证。iOS 与 HarmonyOS 仍为 Scaffold；Relay、持久化、公网连接与写回能力仍是独立的未来里程碑。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 

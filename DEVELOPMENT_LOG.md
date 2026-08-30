@@ -12,26 +12,72 @@
 
 ## 当前状态
 
-最后更新：2026-08-29
+最后更新：2026-08-30
 
-- 当前阶段：Rust 侧首条 Codex → RuntimeHost/Bridge → Native Channel 本地只读链路已经闭合，下一步补齐首个真实原生客户端与可安全触达电脑端的连接方式。
-- 已完成：统一领域模型、确定性 Core Reducer、Session 状态重放、严格 JSON 协议 v1、Provider / Channel 独立端口、集中 Capability 路由、Bridge 多端点编排、Runtime Host、完整只读 Codex App Server Provider、Loopback WebSocket Transport，以及完整本地只读 Native Channel v1。
-- 下一目标：实现 Android 原生客户端与认证 LAN 直连的完整只读 Session/Event 展示闭环。
+- 当前阶段：Android 原生客户端与认证 TLS/LAN 直连的完整本地只读产品闭环已完成，并已在 Android 15 真机与手机热点 LAN 上通过正常路径、失败路径和恢复验收。
+- 已完成：统一领域模型、确定性 Core Reducer、严格 JSON 协议 v1、Bridge/Runtime Host、完整只读 Codex App Server Provider、Loopback 与认证 LAN Native Transport、Host CLI、Pairing v1、设备凭据生命周期，以及可发布的 Android 原生只读客户端。
+- 下一目标：实现可选、认证的 Relay 只读公网链路，让现有 Android 客户端在离开同一 LAN 后仍可安全查看实时 Session/Event，同时保留认证 LAN 直连作为独立默认路径。
 - 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“Android 原生客户端与认证 LAN 直连的完整只读 Session/Event 展示闭环”完成时应满足：
+“可选、认证的 Relay 只读公网链路”完成时应满足：
 
-- 初始化可构建、可安装的 Android 工程，实现与 Native Transport v1 Golden Fixtures 一致的严格 Kotlin 编解码、连接状态机、错误模型和有界内存状态，不将测试客户端当成产品客户端。
-- 在 Rust 端设计并实现可供手机使用的认证 LAN 直连与明确配对流程；连接必须具备端点身份校验、凭据生命周期、消息大小限制、心跳、断线清理和显式重连，不能直接扩大现有无认证 Loopback Listener。
-- Android 客户端完成配对、连接、Provider/Session Discovery、Session 列表、Session 当前状态与实时 Event 展示，并按 Baseline Cursor 正确替换或推进视图；只读 Interaction 必须明确不可操作。
-- 保持本阶段只读，不开放审批、输入、Command、Relay、数据库或离线历史；客户端仅声明并呈现完整实现的能力。
-- 使用真实 Android Emulator 或设备完成 Codex Fixture → Provider → RuntimeHost/Bridge → 认证 LAN Transport → Android UI 的端到端验证，并覆盖首次配对、错误凭据、重连、进程重启、慢客户端和协议不兼容失败路径。
+- Relay 必须是显式可选组件；关闭或不可达时不能破坏已经完成的本地认证 LAN 路径，也不能把 LAN 端点无认证地暴露到公网。
+- 先定义 Host、Relay 与 Android 之间的身份、认证、加密、重放防护、凭据撤销、消息上限、心跳、背压和断线恢复边界，再实现完整只读 Session/Event 路径。
+- Android 继续复用严格 Baseline/Live Cursor Reducer 与只读能力声明，不开放审批、输入、Command 或 Provider 写回，也不以离线缓存伪装实时状态。
+- 不默认引入数据库或持久化；若 Relay 完整性确实要求恢复存储，必须先形成独立架构决策并更新本日志。
+- 使用真实外部网络与 Android 设备验证 Host → Relay → Android 的正常路径、错误身份/凭据、网络切换、重连、慢客户端和 Relay/Host 重启恢复。
 
-下一阶段不接入公网、Relay、数据库、持久化、Bot Channel 或 Provider 写回；完整性集中在首个用户可实际使用的 Android 本地网络只读产品链路。
+下一阶段仍不扩展 Bot Channel、iOS/HarmonyOS 或 Provider 写回；完整性集中在首个可选的 Android 只读公网链路。
 
 ## 历史记录
+
+### 2026-08-30 — Android 原生客户端与认证 LAN 只读产品闭环
+
+状态：已完成并通过自动化及 Android 真机验证；本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- Rust 新增 `agentpulse-pairing` 与 `agentpulse-host`，并将 `agentpulse-transport`、`agentpulse-channel-native` 扩展为私有/链路本地地址上的 TLS WebSocket、Bearer 设备认证、HTTP Client ID 与 Native Hello 身份绑定、在线撤销及有界消息/超时/关闭语义；原有 Loopback 模式保持独立。
+- Pairing v1 已覆盖 Host CA/Leaf 证书、叶证书指纹钉扎、两分钟单次配对、五次失败上限、本机批准、每设备随机 Token 的哈希存储、最多 16 台设备、撤销、全量凭据轮换、Linux BlueZ 安全 GATT 与 QR 回退。
+- Host CLI 覆盖初始化、Codex Thread 管理、服务启动、Codex Remote 启动、配对、设备查询/撤销、凭据轮换、状态和优雅停止，并发布 `_agentpulse._tcp.local.` mDNS 服务；认证 Native WSS 默认使用稳定端口 `49320`，仍允许 `--port` 显式覆盖。
+- Android 工程已形成可构建的 App + 纯 JVM Protocol 双模块：严格 Domain/Native/Pairing v1 编解码、UUIDv7、Discovery → Subscribe → Baseline → Live Reducer、256 条 Event 有界状态、CA/指纹 TLS 校验、Android Keystore AES-GCM 凭据、前台连接服务、显式重连与退避、mDNS、BLE Companion Device、CameraX/ML Kit QR、手机/平板 Compose UI、中英文、明暗主题、通知和完整 Release 配置。
+- Codex Provider 运行目录改用 Provider UUIDv7 全部 74 个随机位派生的稳定 19 位十六进制键，正常桌面 Host 路径不再超过 Unix Socket 上限，真正过长的根路径仍显式拒绝；Host 顶层错误同时输出完整 source chain。
+- Android TLS Client 增加 10 秒 WebSocket Ping，使 Host 停止或半关闭连接能在有界时间内进入可见重试；每次重试重新读取 Vault 最新凭据，mDNS 解析结果仅作为当前连接候选，避免旧重试协程把已撤销 Token 覆盖到刚完成配对的新凭据上。
+- Android Compose 启动测试改用 Compose Test API；Vault 仪器测试增加可选的真实 Host 地址/端口断言。Lint 继续对源码 Warning 执行 `warningsAsErrors`，但排除依赖与 AGP “有新版本”这两类依赖网络和时间的非确定性提示，依赖升级改为显式评审。
+- 权威协议新增 `pairing-v1.md` 与五份 Pairing Fixtures，Native Transport 规范同步增加认证 LAN、请求头身份绑定和撤销语义；Rust Fixture 镜像测试已经通过。
+- CI 已覆盖 Rust 和 Android 的格式/检查/测试/Lint/Debug 构建、API 36 Emulator smoke，以及带外部 Keystore Secrets 的 Release Lint/APK/AAB 构建。
+
+关键决策：
+
+- Native LAN 端口必须跨 Host 重启稳定；`49320` 是产品默认值，配对结果保存该端口，因此同一 LAN 地址上的恢复不依赖热点环境中不可靠的 mDNS。
+- Android 与 Host 两端都保留独立心跳和 timeout：服务端清理慢/无响应客户端，客户端 Ping 负责识别 FIN 未完整传播的半关闭 Host 连接并启动退避重连。
+- 重连始终以 Vault 中最新 CA/Token 为权威，发现出的地址只影响本次尝试；只有 Pairing Client 能替换持久凭据，网络发现不能携带陈旧 Token 回写整个 Profile。
+- 真实 Codex E2E 使用专用 legacy-history Thread `01a05178-cec1-7cb0-920a-9454c0c4eb83`，不污染既有用户 Thread。当前 App Server 可以恢复 legacy Thread；按[官方 App Server 文档](https://developers.openai.com/codex/app-server)，paginated history 的完整读取与 resume 仍会 fail closed，因此不宣称支持该模式。
+- Android Debug APK 与 AndroidTest 使用 Android Studio 现有 Debug Keystore 覆盖安装，证书 SHA-256 保持 `8edb9a9adae80ab16358cf043e91c097109a81495e4adfd2fa29bd168590b886`；未卸载 App、未清除用户数据。
+- 本阶段严格只读，不新增审批、输入、Command、Relay、数据库、离线历史或 Provider 写回能力。
+
+验证结果：
+
+- Rust 最终通过 Rustfmt、全 Workspace Check、Clippy `-D warnings`、Rustdoc `-D warnings`、Release `--all-targets --all-features` Build、84 个常规测试与 2 个 Doctest；其中包含新增的 Host 稳定默认端口/覆盖回归和 Codex Socket 短路径/真正长路径回归。
+- Rust 隔离集成通过 2 个真实 Loopback Native Socket 测试、1 个认证 TLS/LAN 错误凭据/身份绑定/在线撤销测试、1 个捕获 Codex Fixture → Native Socket 测试，以及本机精确 `codex-cli 0.150.1` App Server 初始化测试。
+- Android 最终通过 4 个 Protocol JVM Tests、Debug Lint、Debug APK、AndroidTest APK、Release Lint、R8/资源收缩、Unsigned Release APK 与 AAB 构建；因并行 Lint 内存峰值出现过一次退出码 `137`，改用 `--no-daemon --max-workers=1` 后相同门禁完整通过。
+- 真机 `10CD5Q1FAS0007Y`（vivo V2282A、Android 15/API 35）通过 Compose `AppLaunchTest`、Vault 重建/磁盘无 Token 与 Host Name 明文测试，以及保存端点 `192.168.77.213:49320` 断言；最终 App、Native 与 Provider 均恢复为健康连接。
+- 真机首次配对、本机批准、加密凭据跨进程恢复、只读标记及 Baseline Cursor 通过；专用 Codex Thread 的真实 turn 精确返回 `AgentPulse live event verified.`，Android 会话从 Cursor 1 推进到 5，并显示 `running → message → idle → completed`、Provider `Codex` 与正确工作区。
+- Host stop/start 测试中，Android 在约 12 秒内显示未收到 Pong 并进入重试，Host 在同一 `49320` 端口恢复后约 8 秒自动连接；App force-stop/cold-start 后凭据与会话同样恢复。
+- 在线撤销使活动设备断开，下一次 Android 连接明确显示 `401 Unauthorized`；重新配对、新 Token 持久化和冷启动恢复通过。独立 TLS Pairing v1 测试端点声明 Native v2 时，Android 明确显示 `Host identity or protocol changed during pairing` 且未覆盖真实 Host。
+- 真机慢客户端测试通过：对已连接 App 进程执行可恢复的 `SIGSTOP` 后，Host 在有界 idle timeout 内从 `connected` 清理到 `listening`；`SIGCONT` 后约 3 秒自动恢复为 `connected`，完成态 Cursor 5 未丢失。Rust 的 256 Frame 有界队列测试同时验证溢出会记录 abort reason 并显式失败，不会静默丢帧。
+- 22 份权威 Domain/Native/Pairing JSON Fixtures 与 Rust 镜像逐字节一致，全部源码 JSON 语法检查、四个相关仓库的 `git diff --check` 均通过。
+
+相关提交：
+
+- 本阶段开始时的已提交基线为总控 `530a7da`、Rust `85695ad`、协议规范 `aaaab4d` 与 Android `97bd065`。
+- 本里程碑的 Rust、协议、Android、README 与本日志修改仍位于上述基线后的工作区；未创建里程碑提交、未推送，也未更新总控仓库中的 submodule 指针。
+
+遗留事项：iOS 与 HarmonyOS 仍为 Scaffold，尚无 Relay、公网连接、Bot Channel 实现或 Provider 写回。手机热点环境没有把 Host mDNS 解析到 Android；已保存的稳定地址与 `49320` 能覆盖同一热点内的 Host 重启，但网络地址变化仍依赖可工作的 mDNS 或重新配对。Codex paginated-history Thread 的 resume 仍受上游 App Server 限制。持久化介质与恢复存储方案继续未决定，SQLite 仍不是既定依赖。
+
+下一目标：实现可选、认证的 Relay 只读公网链路，并在真实外部网络与 Android 设备上完成 Session/Event、身份失败、网络切换、重连、背压和 Host/Relay 重启恢复闭环。
 
 ### 2026-08-29 — Native Channel 本地只读 Transport 与同步闭环
 
