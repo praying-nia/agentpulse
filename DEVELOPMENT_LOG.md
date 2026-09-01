@@ -14,21 +14,59 @@
 
 最后更新：2026-09-01
 
-- 当前阶段：可选、认证的 Relay 只读公网产品闭环已完成并部署到 `ap.nonamenona.top:19191`；认证 LAN 仍是独立默认路径，Android 只在用户保存端点并显式选择 Relay 后使用公网路径。
-- 已完成：此前全部本地只读能力，以及 Relay v1 规范/Fixtures、Rust Relay Server/Host Connector、Android 双层 TLS Tunnel、设备 route 动态刷新与撤销、生产 systemd 部署、受限 SSH 原子发布/回滚和 `master` 全 Rust CI 通过后的 GitHub Actions 部署 Job。Codex Provider 现精确兼容已验证的 `codex-cli 0.150.1` 与 `0.152.0`，不接受未验证的中间或未来版本。
-- 唯一下一目标：在 GitHub `production` Environment 中手工配置 Relay 部署 Secrets/Variables，并观察第一次 `master` push 在完整 Rust CI 通过后自动部署及公网 Probe 成功。
+- 当前阶段：首次配对已收敛为唯一的二维码路径。Host 把两分钟临时配对 Listener 只绑定到 Loopback，并在 `ap.nonamenona.top:19191` 上认证发布临时 route；Android 扫码后从 QR 取得 Relay 参数、完成内层指纹钉扎配对、保存并选择 Relay，然后自动连接。USB、ADB、蓝牙、共享 LAN、Deep Link 和手工 URI 均不是首次配对路径；认证 LAN 仅保留为已配对设备的显式后续连接选项。
+- 已完成：此前全部只读能力，以及 QR-only 公网 Bootstrap 的协议/Fixtures、Relay 同一 Host 的稳定 Native route 与临时 Pairing route 并存、Host 公网 route 就绪后才显示 QR、Android 相机唯一入口与扫码后自动 Relay 连接、BLE/D-Bus 依赖及 CI/Release 安装步骤移除。生产 Relay 运行最终内容 revision `a90f3f5bacd22c47587421d57b9bee0ecd931daf`；所有通用示例端口统一为 `2333`，`19191` 只描述真实生产实例。
+- 唯一下一目标：不使用 USB，在 Android 15 真机安装本次新 APK，通过蜂窝公网扫描 Host 终端 QR，完成首次批准、自动 Relay 连接和 Session/Event 恢复验收。
 - 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“启用并验收 GitHub production 自动部署”完成时应满足：
+“真机 QR-only 首次配对验收”完成时应满足：
 
-- `production` Environment 配置专用 SSH 私钥、预验证 `known_hosts`、服务器地址/SSH 端口和 `ap.nonamenona.top:19191`，不向仓库或日志写入私密值。
-- 一次真实 `master` push 必须先通过完整 Rust Job，再下载同一 SHA 的已测试 Artifact，通过受限 `agentpulse-deploy` 用户执行原子发布，并由 Runner 完成公网 TLS/Relay-v1 Probe。
-- 服务器 release symlink、systemd 状态和公网 Probe 必须指向该 Git SHA；若部署失败，必须验证自动回滚，不以手工替换掩盖失败。
-- 本目标只激活已实现的部署链路，不扩展 Bot Channel、iOS/HarmonyOS、Provider 写回或数据库。
+- APK 通过下载 CI Artifact 或其他非 USB 分发方式安装；首次配对过程中不启用 USB Debug、ADB、蓝牙或共享 LAN，也不手工输入 URI、地址、端口或 Token。
+- Host 已配置生产 Relay 并保持运行；`agentpulse pair` 只在临时 route 得到 Relay `host_waiting` 后显示二维码，Android 只通过应用内相机扫描该二维码。
+- Host 终端显示真实 Android 设备身份并要求显式批准；批准后 Android 保存 QR 中的 `ap.nonamenona.top:19191`、自动选择 Relay 并自动连接，不再要求用户绑定参数。
+- 真机通过蜂窝公网恢复至少一个真实 Session/Baseline 与后续 Event，Relay 仍看不到内层 Token、证书身份或 Session/Event 明文；两分钟过期、拒绝或错误身份不得覆盖既有凭据。
+- 验收不扩展 Bot Channel、iOS/HarmonyOS、Provider 写回或数据库；GitHub `production` Environment 的首次 Runner 自动部署验收仍是后续独立工作。
 
 ## 历史记录
+
+### 2026-09-01 — QR-only 公网首次配对实现与生产路由发布
+
+状态：实现边界已完成并通过自动化、最终生产二进制及 Host 公网临时 route 验证；新 APK 尚未在真机完成实际扫码，作为唯一下一目标保留；本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- Pairing v1 Bundle 新增必填、严格规范化的 `relay_endpoint`；首次配对的 Listener 强制只绑定 Loopback，临时 Relay route 从 QR 内 256-bit Bootstrap Token 经 `SHA-256` 存储根及既有 endpoint-bound、domain-separated Relay v1 KDF 派生。Relay 看不到原始 Bootstrap Token 或内层 Pairing 内容。
+- Host `pair` 现在要求已运行 Host 和已配置 Relay，先发布临时 route 并等待 Relay 返回 `host_waiting`，最多等待 15 秒；只有公网入口可用后才显示两分钟终端 QR。手工 URI 输出、BLE Advertiser、BlueZ/D-Bus 依赖及其 Linux 构建依赖全部删除，本机批准、五次尝试上限和单次凭据签发保持不变。
+- Relay waiting 状态从单一 Slot 改为最多四个互不重叠的认证注册，同一 Host 的稳定设备 route 和临时 QR Pairing route 可以并存；匹配 Client 只消费对应注册，RAII Guard 只清理自身 connection ID，重复 route 继续 fail closed 为 `host_busy`。
+- Android 删除全部 Bluetooth 权限、BLE Feature、Nearby Pairing Controller、Deep Link Intent Filter 和手工 Pairing URI 入口；相机成为必需硬件和唯一首次配对 UI。扫码后外层使用平台信任 TLS 连接 QR 指定 Relay，内层继续钉扎临时 Pairing Leaf；成功结果保存规范化 Relay endpoint、选择 Relay 并立即自动连接。
+- 协议规范、Rust/Android Fixtures、跨语言 Relay 派生向量及 README 同步 QR-only 约束。通用示例、占位符和测试统一使用 `relay.example.com:2333`/`0.0.0.0:2333`；实际生产地址继续为 `ap.nonamenona.top:19191`。Android Emulator CI 从 API 36 调整为 API 35，避开此前启动后缺失 Package Service 的系统镜像故障。
+- Relay `check-config` 输出实际 Bind Address，原子部署脚本从已验证配置解析健康检查端口，不再硬编码生产端口；CI 和 tag Release Workflow 均不再安装已删除 BLE 所需的 `libdbus-1-dev`/`pkg-config`。
+
+关键决策：
+
+- QR 是首次信任与参数绑定的唯一入口，不是 USB/蓝牙失败后的回退。二维码同时绑定 Host 临时证书、Bootstrap Token、有效期和 Relay endpoint；用户无需也不能通过 Deep Link 或手工 URI 建立首次配对。
+- 临时 Pairing WSS 不暴露 LAN Socket；公网 Relay 只认证并转发不透明字节，Host 终端批准仍是凭据签发的最终门槛。配对成功后的 LAN route 只作为既有凭据下的显式后续选择，不改变首次配对必须扫码的约束。
+- 示例端口固定使用 `2333`，避免把生产部署细节伪装成产品默认值；`19191` 仅保留在生产事实、配置和 Probe 记录中。
+- 真机未连接 ADB 时不以 Emulator 或旧 APK 冒充物理扫码验收；代码、协议和公网 route 发布可形成一个已验证实现边界，最终用户链路单独以非 USB 新 APK 扫码作为下一目标。
+
+验证结果：
+
+- Rust 通过 Rustfmt、Workspace Clippy `-D warnings`、Rustdoc `-D warnings`、`--workspace --all-targets --all-features --locked` 常规测试和 Release Build；所有需真实 Loopback/Unix Socket、认证 LAN 及本机 Codex 的 ignored 测试串行通过。一次并行 Cargo 构建期间 Codex 临时运行目录测试失配，独立与串行全量复跑均通过。
+- Android 通过 `lintDebug testDebugUnitTest assembleDebug`；新增测试验证扫码成功必定创建已选择 Relay 的 Profile，并拒绝配对期间 Host 身份变化。最终 APK Manifest 确认 Camera 为必需，未包含 Bluetooth 权限、BLE Feature、BROWSABLE Pairing Activity 或 Pairing Deep Link。
+- 最终 `agentpulse pair` 在生产 Relay 已有稳定 Native registration 时成功发布第二条临时 registration，收到公网就绪后只输出 QR；中断 Pairing 后临时 registration 清理，稳定 Host 状态继续为 `waiting_or_tunneling`。
+- 本地与生产 `/opt/agentpulse-relay/current/agentpulse-relay` 的 SHA-1 均为 `a90f3f5bacd22c47587421d57b9bee0ecd931daf`，部署脚本 SHA-256 均为 `a4390d93138945c4c659d72f03278cace0b01bf089a5be943d5b0d930c1137e4`；systemd 为 `active`，公网 TLS/Relay-v1 Probe 通过。
+- Rust/Android GitHub Workflow YAML、部署 Shell Syntax、权威 JSON Fixtures 和四个仓库 `git diff --check` 通过；Cargo/Workflow 不再包含 D-Bus、libdbus 或 bluer 依赖。Android Instrumentation 未执行，因为没有连接真机或 Emulator；未把这一项记为通过。
+
+相关提交：
+
+- 本阶段记录时的已提交基线为总控 `c3a9aa4`、Rust `7478605`、协议规范 `a5122c4` 与 Android `9312b33`。
+- 本里程碑全部修改仍位于上述基线后的工作区；未创建提交、未推送，也未更新总控仓库中的 submodule 指针。生产 `a90f3f5...` 是未提交 release 二进制的内容 revision，不是 Git Commit。
+
+遗留事项：新 APK 尚未在 Android 15 真机完成非 USB 扫码，因此实际相机识别、Host 批准、凭据落盘、自动 Relay 连接和 Session/Event 恢复仍需一次物理验收。GitHub `production` Environment 的 Secrets/Variables 及第一次真实 `master` 自动部署仍需用户在网页端配置并观察；生产证书仍选择手工轮换。iOS/HarmonyOS、Bot Channel、Provider 写回和恢复存储未实现，SQLite 仍不是既定依赖。
+
+下一目标：不使用 USB，在 Android 15 真机安装本次新 APK，通过蜂窝公网扫描 Host 终端 QR，完成首次批准、自动 Relay 连接和 Session/Event 恢复验收。
 
 ### 2026-09-01 — 可选认证 Relay 只读公网产品闭环
 

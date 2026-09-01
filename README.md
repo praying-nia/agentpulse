@@ -70,9 +70,9 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-AgentPulse now provides a complete local read-only product path from the managed Codex App Server through RuntimeHost/Bridge and an authenticated TLS/LAN Native Channel to the native Android app. Pairing, Host identity and per-device credential lifecycle, strict baseline/live cursor synchronization, bounded delivery, heartbeat cleanup, explicit reconnect, and encrypted Android credential recovery are implemented and verified on a physical Android 15 device over a phone-hotspot LAN. iOS and HarmonyOS remain scaffolds; Relay, persistence, public-network connectivity, and write-back capabilities remain separate future milestones.
+AgentPulse now provides a complete read-only Android path from the managed Codex App Server through RuntimeHost/Bridge and authenticated Native TLS over either private LAN or the public Relay. First trust is established only by scanning a short-lived Host-terminal QR code: its route is published through Relay, still requires Host-terminal approval, and needs no USB, ADB, Bluetooth, or shared LAN. Host identity, per-device credential lifecycle, strict baseline/live cursor synchronization, bounded delivery, heartbeat cleanup, reconnect, encrypted Android credential recovery, production Relay deployment, and public-network recovery are implemented. iOS and HarmonyOS remain scaffolds; persistence and write-back remain separate future milestones.
 
-AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 TLS/LAN Native Channel 到 Android 原生 App 的完整本地只读产品链路；配对、Host 身份与逐设备凭据生命周期、严格 Baseline/Live Cursor 同步、有界投递、心跳清理、显式重连及 Android 加密凭据恢复均已在 Android 15 真机与手机热点 LAN 上完成验证。iOS 与 HarmonyOS 仍为 Scaffold；Relay、持久化、公网连接与写回能力仍是独立的未来里程碑。
+AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 Native TLS，并通过私有 LAN 或公网 Relay 到 Android 原生 App 的完整只读链路。首次信任只允许扫描 Host 终端生成的短时二维码：临时路由经 Relay 发布，仍需 Host 终端确认，并且不依赖 USB、ADB、蓝牙或共享局域网。Host 身份、逐设备凭据生命周期、严格 Baseline/Live Cursor 同步、有界投递、心跳清理、重连、Android 加密凭据恢复、生产 Relay 部署及公网恢复均已实现。iOS 与 HarmonyOS 仍为 Scaffold；持久化与写回仍是独立的未来里程碑。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 
