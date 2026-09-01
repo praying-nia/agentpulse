@@ -12,26 +12,66 @@
 
 ## 当前状态
 
-最后更新：2026-08-30
+最后更新：2026-09-01
 
-- 当前阶段：Android 原生客户端与认证 TLS/LAN 直连的完整本地只读产品闭环已完成，并已在 Android 15 真机与手机热点 LAN 上通过正常路径、失败路径和恢复验收。
-- 已完成：统一领域模型、确定性 Core Reducer、严格 JSON 协议 v1、Bridge/Runtime Host、完整只读 Codex App Server Provider、Loopback 与认证 LAN Native Transport、Host CLI、Pairing v1、设备凭据生命周期，以及可发布的 Android 原生只读客户端。
-- 下一目标：实现可选、认证的 Relay 只读公网链路，让现有 Android 客户端在离开同一 LAN 后仍可安全查看实时 Session/Event，同时保留认证 LAN 直连作为独立默认路径。
-- 尚未决定：持久化介质与恢复存储方案。数据库，特别是 SQLite，不是当前架构的既定依赖。
+- 当前阶段：可选、认证的 Relay 只读公网产品闭环已完成并部署到 `ap.nonamenona.top:19191`；认证 LAN 仍是独立默认路径，Android 只在用户保存端点并显式选择 Relay 后使用公网路径。
+- 已完成：此前全部本地只读能力，以及 Relay v1 规范/Fixtures、Rust Relay Server/Host Connector、Android 双层 TLS Tunnel、设备 route 动态刷新与撤销、生产 systemd 部署、受限 SSH 原子发布/回滚和 `master` 全 Rust CI 通过后的 GitHub Actions 部署 Job。Codex Provider 现精确兼容已验证的 `codex-cli 0.150.1` 与 `0.152.0`，不接受未验证的中间或未来版本。
+- 唯一下一目标：在 GitHub `production` Environment 中手工配置 Relay 部署 Secrets/Variables，并观察第一次 `master` push 在完整 Rust CI 通过后自动部署及公网 Probe 成功。
+- 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“可选、认证的 Relay 只读公网链路”完成时应满足：
+“启用并验收 GitHub production 自动部署”完成时应满足：
 
-- Relay 必须是显式可选组件；关闭或不可达时不能破坏已经完成的本地认证 LAN 路径，也不能把 LAN 端点无认证地暴露到公网。
-- 先定义 Host、Relay 与 Android 之间的身份、认证、加密、重放防护、凭据撤销、消息上限、心跳、背压和断线恢复边界，再实现完整只读 Session/Event 路径。
-- Android 继续复用严格 Baseline/Live Cursor Reducer 与只读能力声明，不开放审批、输入、Command 或 Provider 写回，也不以离线缓存伪装实时状态。
-- 不默认引入数据库或持久化；若 Relay 完整性确实要求恢复存储，必须先形成独立架构决策并更新本日志。
-- 使用真实外部网络与 Android 设备验证 Host → Relay → Android 的正常路径、错误身份/凭据、网络切换、重连、慢客户端和 Relay/Host 重启恢复。
-
-下一阶段仍不扩展 Bot Channel、iOS/HarmonyOS 或 Provider 写回；完整性集中在首个可选的 Android 只读公网链路。
+- `production` Environment 配置专用 SSH 私钥、预验证 `known_hosts`、服务器地址/SSH 端口和 `ap.nonamenona.top:19191`，不向仓库或日志写入私密值。
+- 一次真实 `master` push 必须先通过完整 Rust Job，再下载同一 SHA 的已测试 Artifact，通过受限 `agentpulse-deploy` 用户执行原子发布，并由 Runner 完成公网 TLS/Relay-v1 Probe。
+- 服务器 release symlink、systemd 状态和公网 Probe 必须指向该 Git SHA；若部署失败，必须验证自动回滚，不以手工替换掩盖失败。
+- 本目标只激活已实现的部署链路，不扩展 Bot Channel、iOS/HarmonyOS、Provider 写回或数据库。
 
 ## 历史记录
+
+### 2026-09-01 — 可选认证 Relay 只读公网产品闭环
+
+状态：已完成并通过自动化、生产部署及 Android 15 真机公网验证；GitHub `production` Environment 的私密值仍需用户在网页端手工配置，本里程碑完成时尚未创建独立提交。
+
+完成内容：
+
+- 权威协议新增 Relay v1：严格端点语法、4-byte 大端长度前缀、严格 JSON Envelope、Host/Client Challenge Proof、域隔离 HMAC KDF、一次性 Host Enrollment、错误码、心跳、内存 route、64 KiB 双向 buffer、慢端与 idle timeout，并提供九份跨语言 Fixtures 与稳定向量。
+- Rust 新增完整 `agentpulse-relay` crate 与 `init/serve/check-config/probe` CLI。公网 Relay 终止平台信任的外层 TLS，只保存经认证 Host 注册的内存 route，并在匹配后泵送不透明的内层 Host-CA TLS；限制一个 Host waiting slot、16 个设备 route、32 个外层连接和有界线程/文件/内存资源。
+- Host CLI 新增 `relay configure/status/disable`，Enrollment Token 只从 stdin 读取并以 `0600` 保存；Host 从既有 Native Bearer Token 的 SHA-256 存储根派生每设备 route，不把原 Token 交给 Relay。配对/撤销变化会刷新 route，Loopback Native 仅在 Relay 已配置时允许，LAN 与 Relay 故障域保持独立。
+- Android Vault schema 从 v1 原位迁移到 v2，Host Profile 新增可选 Relay endpoint 与显式 LAN/Relay 选择；新增平台信任外层 TLS、SNI/hostname 验证、严格 Relay 控制握手和 SocketFactory Tunnel，随后仍通过 Host CA 校验、Bearer 身份绑定和原 Native v1 Reducer。没有自动 fallback、离线 Session/Event、审批、输入或 Command。
+- 修复真机 route 刷新暴露的服务端 waiting-slot 泄漏：Host 在心跳前发现 route 变化会提前断开，旧实现中的 `?` 绕过末尾清理并永久返回 `HostBusy`；改用匹配 connection ID 的 RAII Guard，在所有正常、错误和提前返回路径释放且不会清除后继 slot，并增加回归测试。
+- 生产部署新增 hardened systemd Unit、一次性 Bootstrap、专用 `agentpulse-deploy` 用户/Ed25519 Key、严格 40 位 revision、配置/证书预检、原子 release symlink、服务 Probe 与失败回滚。GitHub Workflow 只在 `master` Push 且完整 Rust Job 成功后下载同 SHA Artifact、部署并执行公网 Probe。
+- 阿里云 Ubuntu 24.04 LTS 已在安全组开放的 TCP 19191 上部署；证书与私钥归 `root:agentpulse-relay`、配置私密，Nginx 未参与，证书手工轮换。生产当前运行修复后二进制内容 revision `0bb67216ba8a04a844dd2e78a7e3e972efb9ef89`。
+- Codex Provider 根据本机真实 `codex-cli 0.152.0` 重新生成完整官方 App Server Schema，Preferred Version 更新为 `0.152.0`；兼容策略使用精确集合 `0.150.1`/`0.152.0`，旧捕获 Fixture 继续通过新 Schema，未知版本仍 fail closed。
+
+关键决策：
+
+- Relay 外层必须使用公网 CA TLS，内层继续使用配对得到的 Host CA TLS；Relay 可以看到连接元数据和字节数，但不能看到 Native Bearer Token、Host Certificate Identity 或 Session/Event 明文。
+- route ID、Client Auth Key 和 Proof 全部由现有设备随机 Token 通过 endpoint-bound、domain-separated SHA-256/HMAC 派生；Host Enrollment Token 与设备 Token 不复用，Relay 配置只存 Enrollment Token 的 SHA-256 proof key。
+- LAN 与 Relay 都由用户显式选择，客户端只重试当前路径，不做安全语义不透明的自动切换。Android 16 本地网络权限仅在 LAN 路径申请。
+- Relay 不引入数据库：进程重启后 Host 必须重新注册 route；撤销最终仍由内层 Native Authorizer 强制，Relay route 快照在有界心跳窗口内刷新。
+- Codex 兼容不采用宽松 SemVer 范围。只有生成 Schema、Fixture 和真实 initialize handshake 均验证过的精确 CLI 版本进入 Allowlist；上游再改协议时重新生成并评审。
+- GitHub 不持有服务器 TLS 私钥或 Relay Enrollment Token，只持有专用部署 SSH Key；`known_hosts` 必须预先验证，部署 Artifact 必须来自前置 Rust Job。
+
+验证结果：
+
+- Rust 最终通过 Rustfmt、Workspace Clippy `-D warnings`、Rustdoc `-D warnings`、Release `--workspace --all-targets --all-features --locked` Build、91 个常规测试与 2 个 Doctest；额外 5 个 ignored 真 Socket 测试全部通过，其中包含认证 LAN 撤销、2 个 Native Socket、捕获 Codex → Native 以及本机 `codex-cli 0.152.0` 真实 initialize。
+- Android 最终通过 `lintDebug testDebugUnitTest connectedDebugAndroidTest assembleDebug`，92 个 Gradle Action 成功；V2282A 真机完成 4 个 Instrumentation Test，其中 1 个既有环境条件测试按设计跳过。Relay JVM 向量与 Rust/权威 Fixture 的 route/proof 字节一致。
+- 真机 `10CD5Q1FAS0007Y`（vivo V2282A、Android 15/API 35）在没有 Native ADB reverse 的情况下，通过蜂窝公网与 Host 建立两条不同公网来源的 Relay 外层连接；内层 Native 显示 `connected`，Session `重构SummonGssProjectileTask上下文` 恢复为 Cursor 1、`空闲 · 已连接`。
+- 新配对设备在旧 route 快照窗口内先被正确拒绝为不泄漏细节的 `authentication_failed`；Host 刷新、修复后 Relay 重启、旧设备撤销触发的 waiting route 重注册均自动恢复。RAII 回归中服务端没有再次出现 `HostBusy`，随后当前设备重新连接成功。
+- 关闭蜂窝数据后默认路由明确不可达、Android 进入可见重试；恢复后无需重启 Host/Relay，手机从 `122.96.32.252` 切到新蜂窝出口 `122.192.14.149` 并自动恢复。手机未加入任何已保存 Wi-Fi，因此未把单独 Wi-Fi 切换宣称为已验证。
+- Relay 原子部署会重启生产服务并自动恢复 Host/Android；本地 Host 也完成优雅 stop/start，35 秒内 Provider、Loopback Native、Host Connector、两条公网 Relay 连接和 Android Session 全部恢复。
+- 生产服务 `active` 且 `enabled`，以 `agentpulse-relay` 用户运行、无 systemd Restart；`check-config`、公网 `probe`、证书 SAN/Key 匹配和剩余 90 天检查通过。Shell Syntax、GitHub Actions YAML、Relay JSON Fixtures 及四个仓库 `git diff --check` 全部通过。
+
+相关提交：
+
+- 本阶段记录时的已提交基线为总控 `42982d4`、Rust `fd92130`、协议规范 `0a802dc` 与 Android `3d14c40`。
+- 本里程碑的 Rust、协议、Android、README、Workflow、部署文件与本日志修改仍位于上述基线后的工作区；未创建里程碑提交、未推送，也未更新总控仓库中的 submodule 指针。生产的 `0bb672...` 是未提交 release 二进制的内容 revision，不是 Git Commit。
+
+遗留事项：GitHub `production` Environment 尚未手工填入两个 Secret 与三个 Variable，因此 Workflow 代码和相同受限部署流程虽已实现并以本机生产式部署通过，尚未由 GitHub Runner 执行第一次真实 `master` 自动部署。生产证书在 2026-11-30 到期且当前选择手工轮换。iOS/HarmonyOS、Bot Channel、Provider 写回和恢复存储仍未实现；SQLite 仍不是既定依赖。
+
+下一目标：配置并验收 GitHub `production` Environment，使第一次真实 `master` push 在完整 Rust CI 后自动部署同 SHA Relay Artifact 并通过公网 Probe。
 
 ### 2026-08-30 — Android 原生客户端与认证 LAN 只读产品闭环
 
