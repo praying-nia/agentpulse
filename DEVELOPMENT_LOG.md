@@ -16,6 +16,8 @@
 
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、Codex Plan 选择/文本表单、消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
 - 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
+- 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；尚未覆盖多字段、Other 与敏感字段组合。
+- 退出稳定性：Host 会主动中断 Relay 与 Codex Proxy 活动连接，受管 App Server 使用独立进程组；手机在线、桌面 TUI 在线且 Turn 持续输出时实测 5.35 秒退出，无 systemd 超时或遗留 Runtime，并可立即重启。
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
 - 唯一下一目标：在 Android 15 真机公网 Relay 上完成一次 Native v3 端到端验收，覆盖 Plan 多字段表单、敏感输入、常用指令、Prompt Queue 断连恢复与跨 128 Event 增量补齐。
 
@@ -27,6 +29,38 @@
 - 同一 Android/Host 进程中跨越 128 条 Event 的断连缺口按 Cursor 分页补齐且不产生历史通知风暴；Host 重启后新 `host_run_id` 清空旧历史，全程不引入数据库。
 
 ## 历史记录
+
+### 2026-09-04 — 真机单选交互与可靠退出
+
+状态：真实 Android 15 公网 Relay 单选交互与活动 Turn 退出验收已完成；完整 Native v3 多字段、指令、Queue 和 128 Event 验收尚未完成。本次 Rust 与总控日志修改均尚未提交。
+
+完成内容：
+
+- 使用受管 Codex App Server 与桌面 Proxy 发起真实 `item/tool/requestUserInput` A/B/C 单选，Android 真机收到交互，手机选择 C 后响应准确返回发起请求的桌面 TUI。
+- Relay Host Connector 新增一生命周期连接取消器，停止时主动关闭活动 TCP/TLS Socket；Relay 线程等待设置 2 秒硬上限，覆盖 DNS、连接建立和状态切换无法即时中断的边界。
+- Codex Client Proxy 跟踪每条 Route 的上下游 Unix Socket，停止时先关闭全部活动连接再 Join，覆盖桌面 WebSocket 保持在线时的退出路径。
+- 受管 Codex App Server 在独立 Unix 进程组中启动；先向全组发送 SIGTERM，超时后向全组发送 SIGKILL，避免 Node 启动器退出后 Codex/MCP 子进程遗留在 systemd Unit 中。
+- 强制退出留下且确认无人占用的 Runtime 目录均通过改名保留，没有删除用户数据；最终候选版本能自行删除活动 Runtime 并立即重新启动。
+
+关键决策：
+
+- Host 停止不等待不可中断的公网 DNS/连接操作超过自身退出预算；Relay Worker 超时后仅 Detach，进程完成其余安全清理并退出。
+- App Server 及其子进程属于同一次临时 Host 生命周期，停止时整组终止；不保存或恢复本次 `ap` 选择、Thread 映射或正在执行的 Turn。
+- USB/ADB 仅用于启动、观察和操作测试 App；配对凭据与业务连接仍完全来自二维码和公网 Relay，没有注入调试连接参数。
+
+验证结果：
+
+- Rust `cargo test --workspace` 在允许 Unix Socket 的环境通过；新增覆盖 Relay 阻塞读取消、Relay Join 上限、活动桌面 Proxy 中断和 App Server 完整进程组超时终止。
+- `cargo clippy --workspace --all-targets -- -D warnings`、`cargo build --release -p agentpulse-host` 与 `git diff --check` 通过。
+- 真机隔离结果为仅手机连接 0.32 秒退出、仅桌面 TUI 连接 0.25 秒退出；最终在 Android 公网 Relay 已连接、桌面 TUI 在线且 Turn 持续输出时 5.35 秒退出。最终 systemd 日志没有 `stop-sigterm timed out` 或代为强杀残留进程，活动 Runtime 目录不存在，随后 `ap host rinia` 启动成功并恢复手机连接。
+
+相关提交：
+
+- 当前基线为总控 `a843ed1`、Rust `4fd64b9`；本次 Rust 修改与总控日志位于工作区，未创建提交、未推送，也未更新总控 Submodule 指针。
+
+遗留事项：尚未完成多字段 Plan 表单、Other/敏感输入、常用远程指令、Prompt Queue 断连恢复和跨 128 Event 增量补齐的同轮真机验收；此前改名保留的 Orphan Runtime 目录尚未删除。
+
+下一目标：继续在同一 Android 15 公网 Relay 链路上完成多字段表单、常用指令、Queue 断连恢复与跨 128 Event 增量补齐验收。
 
 ### 2026-09-04 — Plan 原子表单与常用远程指令
 
