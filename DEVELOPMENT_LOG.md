@@ -14,12 +14,12 @@
 
 最后更新：2026-09-04
 
-- 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、Codex Plan 选择/文本表单、消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
+- 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
 - 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
-- 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；尚未覆盖多字段、Other 与敏感字段组合。
+- 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；`/model` 和普通消息已到达 Host/Codex 并回显结果，提交框只在收到相关 `command_result` 后清空。真机复测发现旧 `/plan` 仅伪造提示词、实际 Turn 仍为 Default；该实现已修复并完成自动化与真实 App Server 握手验证，等待换用新 Host 后复验原生 Plan 多字段、Other 与敏感字段组合。
 - 退出稳定性：Host 会主动中断 Relay 与 Codex Proxy 活动连接，受管 App Server 使用独立进程组；手机在线、桌面 TUI 在线且 Turn 持续输出时实测 5.35 秒退出，无 systemd 超时或遗留 Runtime，并可立即重启。
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
-- 唯一下一目标：在 Android 15 真机公网 Relay 上完成一次 Native v3 端到端验收，覆盖 Plan 多字段表单、敏感输入、常用指令、Prompt Queue 断连恢复与跨 128 Event 增量补齐。
+- 唯一下一目标：换用新 Release Host，在 Android 15 公网 Relay 上确认真实 Plan Turn 与多字段表单，并继续完成 Prompt Queue 断连恢复和跨 128 Event 增量补齐。
 
 ### 下一目标的验收边界
 
@@ -29,6 +29,69 @@
 - 同一 Android/Host 进程中跨越 128 条 Event 的断连缺口按 Cursor 分页补齐且不产生历史通知风暴；Host 重启后新 `host_run_id` 清空旧历史，全程不引入数据库。
 
 ## 历史记录
+
+### 2026-09-04 — 原生 Codex Plan 协作模式
+
+状态：错误的提示词模拟 Plan 已替换为 Codex App Server 原生 `turn/start.collaborationMode`，协议、实现、回归测试和 Release Host 构建均已完成；未自动启动或切换 Host，Android 真机原生 Plan 表单仍待下一轮复验。本次 Rust、生成 Schema 与总控日志修改均尚未提交。
+
+完成内容：
+
+- App Server 初始化声明 `capabilities.experimentalApi=true`，每次 `turn/start` 根据 `/plan` 状态发送 `plan` 或 `default` 的顶层 `collaborationMode`；`developer_instructions:null` 使用 Codex 内建模式指令，不再把 `Work in Plan mode...` 冒充成用户消息。
+- Provider 从 `thread/start`、`thread/resume`、`thread/started` 和 `thread/settings/updated` 跟踪当前模型与推理强度；手机未先执行 `/model` 时也能为 Collaboration Mode 填入当前 Thread 的真实模型，显式选择仍优先。
+- 删除无效的 `thread/start.config.collaboration_mode`。历史补齐继续过滤旧版本已经写入 Rollout 的伪 Plan 提示，避免把遗留实现文本重新显示到手机。
+- 使用本机 Codex CLI `0.153.0` 重新生成 experimental App Server Schema，将 `0.153.0` 加入明确验证版本；更高合法版本继续沿用 best-effort 策略。
+
+关键决策：
+
+- Plan/Default 是逐 Turn 的 App Server 协作模式，不是 AgentPulse 自定义 Prompt，也不绑定或持久化到全局配置。`/plan` 只改变当前 Host 进程内该 Session 的后续 Turn 默认值。
+- Collaboration Mode 的模型优先采用手机显式选择，其次采用 App Server 报告的当前 Thread 设置；不硬编码模型名称。关闭 Plan 后显式发送 `default`，避免 App Server 的粘性设置让后续 Turn 继续停留在 Plan。
+- 本轮不自动启动或切换 Host，避免擅自改变用户的运行状态；Release 二进制已构建，用户下次启动 Host 时即可加载本次修复。
+
+验证结果：
+
+- 新增集成回归验证 `turn/start` 只包含原始用户文本、携带 `collaborationMode.mode=plan`、继承 Thread 模型且不再包含旧 `config`；初始化回归验证 experimental API opt-in。
+- Codex Provider 36 项常规测试全部通过，2 项专用测试保持 ignored；Rust Workspace `--all-targets --test-threads=1` 全部通过，Clippy `-D warnings` 与 Rustfmt Check 通过。
+- 本机 Codex CLI `0.153.0` 的真实 App Server 初始化握手通过；`cargo build --release -p agentpulse-host` 通过。未消耗真实模型 Turn 做自动化测试，也未将尚未执行的手机复验描述为通过。
+
+相关提交：
+
+- 当前基线仍为总控 `d22fed3`、Rust `311fed1`、Android `3845d7b`；本次修复连同此前工作区修改均未创建提交、未推送，也未更新总控 Submodule 指针。
+
+遗留事项：需用新 Release 二进制启动 Host，并由手机确认 Rollout 的 `collaboration_mode_kind` 为 `plan`，随后完成多字段、Other/敏感输入、Queue 断连与 128 Event 验收。
+
+下一目标：换用新 Release Host，在 Android 15 公网 Relay 上确认真实 Plan Turn 与多字段表单，并继续完成 Queue 断连恢复和跨 128 Event 增量补齐验收。
+
+### 2026-09-04 — Native 指令确认、并发解锁与连续对话
+
+状态：手机指令确认、Native/Codex 并发死锁修复和已结束会话的连续对话已完成并验证；完整 Native v3 多字段、Queue 断连和 128 Event 验收尚未完成。本次 Rust、Android 与总控日志修改均尚未提交。
+
+完成内容：
+
+- Android 为每次 `submit_command` 跟踪 Request/Command/Session 关联状态；输入在等待 Host 时保留并锁定，只在收到匹配 `command_result` 后清空，协议错误或连接提前结束则保留原文并显示失败原因，未确认请求不自动重发。
+- Native Worker 显式缩短 Delivery Mutex 的持有范围，修复断连/发送失败路径在同一线程再次获取该锁造成的自锁；真实 Socket 回归覆盖有待发送 Event 时的突发断连、恢复 Listening 和再次握手。
+- Codex Worker 在取出命令、进行中 Session 列表和 Prompt Session 列表后立即释放 Control Mutex，消除 Provider 发布 Event 与 Native 提交下一条命令之间的 Bridge/Control AB-BA 死锁。
+- Codex 的 `Completed`、`Failed` 与 `Cancelled` 只表示上一轮 Turn 的结果，不再被当作 Thread 永久不可输入；同一 Session 可继续发起后续 `turn/start`。
+
+关键决策：
+
+- Native `command_result` 只确认 Host 已完成校验并将命令交给 Provider，不伪装成 Codex 已完成；Codex 的用户消息、状态和最终回复仍由后续有序 Domain Event 表达。
+- 发送失败保留文本供用户检查或手动重试；断连时不隐式重放不确定是否已被 Host 接收的命令，避免重复 Prompt。
+- Codex Thread 是可多轮继续使用的会话；单个 Turn 的完成、失败或取消不是 Thread 的终止条件。所有提交状态和 Prompt Queue 仍只存在于当前进程，不新增数据库或跨启动恢复。
+
+验证结果：
+
+- Android 15 公网 Relay 真机确认 `/model` 返回可用模型列表，普通消息到达 Codex TUI 并将回复同步回手机；等待确认状态不再无限卡住。USB 仅用于安装、界面操作和观察，业务连接仍使用原二维码凭据与公网 Relay。
+- 新增 Android JVM 测试覆盖匹配/不匹配确认、可恢复协议错误和断连失败；`testDebugUnitTest`、`lintDebug` 与 `assembleDebug` 通过。
+- 新增 Codex 集成回归在状态 Event 投递时验证 Control Mutex 已释放，并验证 `Completed` Session 的后续 Prompt 会产生新的 `turn/start`；Rust Workspace 全目标测试、Clippy `-D warnings` 和 Release Host 构建通过。
+- Native 突发断连真实 Loopback 测试单独通过；修复后的 Host 在测试 TUI 退出后 0.38 秒完成停止并可立即重启，最终 Host 保持运行且手机重新连接。
+
+相关提交：
+
+- 当前基线为总控 `d22fed3`、Rust `311fed1`、Android `3845d7b`；本次 Rust、Android 与总控日志修改位于工作区，未创建提交、未推送，也未更新总控 Submodule 指针。
+
+遗留事项：尚未完成 Plan 多字段/Other/敏感输入、活动 Turn FIFO、Queue 断连恢复和跨 128 Event Cursor 补齐的同轮真机验收；诊断期间强制退出后改名保留的 Orphan Runtime 目录尚未删除。
+
+下一目标：继续在同一 Android 15 公网 Relay 链路上完成多字段表单、Queue 断连恢复与跨 128 Event 增量补齐验收。
 
 ### 2026-09-04 — 真机单选交互与可靠退出
 
