@@ -14,8 +14,8 @@
 
 最后更新：2026-09-03
 
-- 当前阶段：Android 15 真机已经完成 QR-only 公网首次配对与真实 Session 恢复；Linux 本机新增 `ap` 单命令工作流，按 `codex`、`codex-nona`、`codex-rinia` 精确选择 App Server profile，由 systemd user transient service 保持 Host 跨终端运行。首次冷启动会自动显示一次配对 QR，运行中可用 `ap qrcode` 再生成。开发期允许 USB 安装本地 Debug APK、启动应用和读取诊断日志，但 USB/ADB 绝不传输配对参数或业务流量。
-- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；配对终态 Frame 可靠交付、Relay Host 可停止检查及 systemd SIGTERM 有序清理均已闭合。`ap` 支持启动/复用、profile 切换、独立 QR、状态、日志与停止，不覆盖原有三个 Codex 命令。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认尽力启动，仍使用严格的 `0.152.1` Schema。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
+- 当前阶段：Android 15 真机已经完成 QR-only 公网首次配对与真实 Session 恢复；Linux 本机 `ap` 单命令工作流按 `codex`、`codex-nona`、`codex-rinia` 精确选择 App Server profile，由 systemd user transient service 保持 Host 跨终端运行。`ap` 不读取或保存 Thread 配置，只临时跟踪当前 App Server 中启动或恢复的 Thread；每次前台调用都以调用 shell 的当前目录启动 Codex。首次冷启动会自动显示一次配对 QR，运行中可用 `ap qrcode` 再生成。开发期允许 USB 安装本地 Debug APK、启动应用和读取诊断日志，但 USB/ADB 绝不传输配对参数或业务流量。
+- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；配对终态 Frame 可靠交付、Android 成功终态清理、Relay Host 可停止检查及 systemd SIGTERM 有序清理均已闭合。`ap` 支持启动/复用、profile 切换、Shell Proxy 同步、逐次工作目录、独立 QR、状态、日志与停止，不覆盖原有三个 Codex 命令。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认尽力启动，仍使用严格的 `0.152.1` Schema。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
 - 唯一下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的首个可写回切片——远程批准/拒绝请求，并保持能力门禁、身份绑定、超时及只允许当前活跃订阅响应的约束。
 - 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
@@ -30,6 +30,39 @@
 - 验收不扩展任意命令、自由文本输入、离线恢复、Bot Channel、iOS/HarmonyOS 或数据库；App 功能达到发布验收阶段后，再用对应 GitHub Actions APK Artifact 完成非 USB 安装验收。
 
 ## 历史记录
+
+### 2026-09-03 — `ap` 无状态 Thread 发现、Proxy 与逐次工作目录
+
+状态：实现、文档、自动化、真实 Codex 进程参数与 Android 15 真机连接验证已完成；本次 Rust、Android 与总控日志修改尚未提交。当前 Host 以 `codex-nona` profile 正常运行。
+
+完成内容：
+
+- `ap` 启动 Host 时启用新的 `serve --discover-threads` 模式；Codex Provider 可以从零个保存的 Thread 启动，并根据同一受管 App Server 广播的 `thread/started` 动态创建 Session。RuntimeHost 停止后映射立即消失，快捷器不再依赖、读取、修改或保存全局 `agentpulse threads` allowlist。
+- `ap` 比对调用 Shell 与活动 Host 进程的大小写 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY`、`NO_PROXY` 环境；不一致时有序重启 Host，并由 `systemd-run` 安全继承当前值。受管 App Server 与随后打开的 Codex TUI 因此使用所选 profile 的原环境和当前 Proxy。
+- 每次 `ap [profile]` 打开前台 Codex 时都会默认追加 `-C "$PWD"`，所以复用早先从 `$HOME` 或其他工程启动的后台 Host 不再污染本次工作目录。用户显式提供 `-C`、紧凑 `-C<path>`、`--cd <path>` 或 `--cd=<path>` 时保持原参数并优先采用用户目录。
+- Android Pairing Client 的 WebSocket/TLS 清理移入 `NonCancellable + Dispatchers.IO`，且清理异常只记录而不覆盖已经收到的 `Succeeded`，消除了成功后主线程关闭 Socket 导致的无消息“配对失败”。
+- `ap --help` 与 Host README 同步说明逐次目录、显式覆盖、Proxy 继承和无状态 Thread 生命周期；Provider 与总 README 同步临时 Thread 发现边界。
+
+关键决策：
+
+- `nona`/`rinia` 只选择对应 Codex executable/profile；它们不是 AgentPulse 全局配置或 Thread 集合。Host 停止后 Session 映射不保留，只有 Host 机器身份、已配对设备凭据与 Relay 配置继续作为机器级状态存在。
+- 工作目录属于每一次前台 Codex 调用，不属于长驻 Host。依据 Codex CLI 的正式 `-C/--cd` 语义，快捷器给未指定目录的调用补上调用时的 `$PWD`，而不是为切换目录重启 Host。
+- Proxy 属于受管 App Server 的进程环境，无法在已运行进程中补写；只有检测到差异时才重启 Host，目录变化则完全不触发服务重启。
+
+验证结果：
+
+- Rust 通过 Rustfmt、Workspace Clippy `-D warnings`、95 个常规测试、6 个串行 ignored 真 Socket/真实 Codex 测试、Rustdoc `-D warnings` 与 Release `--workspace --all-targets --all-features --locked` Build；动态发现专门测试验证未保存 Thread ID 时可由 `thread/started` 建立 Session。
+- 两个连接同一临时真实 Codex App Server 的客户端验证：一个客户端启动 Thread 时，观察客户端收到同一 `thread/started`；`ap host nona` 也能在无保存 Thread 依赖下启动 Provider。Android Debug APK 通过 `lintDebug testDebugUnitTest assembleDebug` 并覆盖安装，用户随后确认 QR 配对后的手机连接恢复正常。
+- 真实运行中的 `codex-nona` Host 保持复用；从 `/home/nona/connection/agentpulse` 与 `/home/nona/mcg` 分别执行 `ap nona --version`，系统调用跟踪确认最终 Codex 参数分别只含对应目录的 `-C`，两次均返回 `codex-cli 0.152.1`。另一次 `--cd=/tmp` 跟踪确认没有注入调用目录且显式值原样到达 Codex。
+- `bash -n scripts/ap`、Rust/Android/总控 `git diff --check` 通过；真实 Host 与子 App Server 的 Proxy、profile、工作目录和运行状态也通过进程环境、状态及命令参数核对。
+
+相关提交：
+
+- 当前已提交基线为总控 `b72e8e5`、Rust `19a6500`、Android `8755a09`、协议 `f9bca8f`。本里程碑修改位于这些提交后的工作区；未创建提交、未推送，也未更新总控仓库中的 Submodule 指针。
+
+遗留事项：单个 Host 同时只运行一个 Codex profile，切换 profile 会使手机和已有 Remote TUI 短暂断开后重连；停止 Host 会按设计丢弃临时 Session 映射。稳定签名 Android Release 与 Actions Artifact 非 USB 安装仍待 App 功能完成后验收。
+
+下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的远程批准/拒绝闭环，并在同一 QR 配对真机公网链路上验证能力门禁、一次性响应、超时和错误路径。
 
 ### 2026-09-03 — `ap` 单命令 Host、Codex 与二维码工作流
 
