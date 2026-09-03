@@ -12,10 +12,10 @@
 
 ## 当前状态
 
-最后更新：2026-09-01
+最后更新：2026-09-03
 
-- 当前阶段：首次配对已收敛为唯一的二维码路径。Host 把两分钟临时配对 Listener 只绑定到 Loopback，并在 `ap.nonamenona.top:19191` 上认证发布临时 route；Android 扫码后从 QR 取得 Relay 参数、完成内层指纹钉扎配对、保存并选择 Relay，然后自动连接。USB、ADB、蓝牙、共享 LAN、Deep Link 和手工 URI 均不是首次配对路径；认证 LAN 仅保留为已配对设备的显式后续连接选项。
-- 已完成：此前全部只读能力，以及 QR-only 公网 Bootstrap 的协议/Fixtures、Relay 同一 Host 的稳定 Native route 与临时 Pairing route 并存、Host 公网 route 就绪后才显示 QR、Android 相机唯一入口与扫码后自动 Relay 连接、BLE/D-Bus 依赖及 CI/Release 安装步骤移除。生产 Relay 运行最终内容 revision `a90f3f5bacd22c47587421d57b9bee0ecd931daf`；所有通用示例端口统一为 `2333`，`19191` 只描述真实生产实例。
+- 当前阶段：首次配对已收敛为唯一的二维码路径并已提交、推送、通过 Android/Rust CI 与生产 Relay 自动部署；物理扫码仍待最终验收。Host 把两分钟临时配对 Listener 只绑定到 Loopback，并在 `ap.nonamenona.top:19191` 上认证发布临时 route；Android 扫码后从 QR 取得 Relay 参数、完成内层指纹钉扎配对、保存并选择 Relay，然后自动连接。USB、ADB、蓝牙、共享 LAN、Deep Link 和手工 URI 均不是首次配对路径；认证 LAN 仅保留为已配对设备的显式后续连接选项。
+- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认在明确警告后尽力启动，仍使用严格的 `0.152.1` Schema，实际协议不兼容会进入可见 Provider 失败而不会静默忽略。`0.152.0` 与 `0.152.1` 官方聚合 Schema 逐字节相同。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
 - 唯一下一目标：不使用 USB，在 Android 15 真机安装本次新 APK，通过蜂窝公网扫描 Host 终端 QR，完成首次批准、自动 Relay 连接和 Session/Event 恢复验收。
 - 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
@@ -27,9 +27,43 @@
 - Host 已配置生产 Relay 并保持运行；`agentpulse pair` 只在临时 route 得到 Relay `host_waiting` 后显示二维码，Android 只通过应用内相机扫描该二维码。
 - Host 终端显示真实 Android 设备身份并要求显式批准；批准后 Android 保存 QR 中的 `ap.nonamenona.top:19191`、自动选择 Relay 并自动连接，不再要求用户绑定参数。
 - 真机通过蜂窝公网恢复至少一个真实 Session/Baseline 与后续 Event，Relay 仍看不到内层 Token、证书身份或 Session/Event 明文；两分钟过期、拒绝或错误身份不得覆盖既有凭据。
-- 验收不扩展 Bot Channel、iOS/HarmonyOS、Provider 写回或数据库；GitHub `production` Environment 的首次 Runner 自动部署验收仍是后续独立工作。
+- 验收不扩展稳定签名 Android Release、Bot Channel、iOS/HarmonyOS、Provider 写回或数据库。
 
 ## 历史记录
+
+### 2026-09-03 — Codex 新版本尽力启动兼容门禁
+
+状态：实现、文档与发布级自动化验证已完成；本次兼容修改尚未提交。QR-only 真机物理扫码仍是唯一下一目标。
+
+完成内容：
+
+- Codex Provider 首选已验证版本提升到 `0.152.1`，精确已验证集合为 `0.150.1`、`0.152.0`、`0.152.1`；公共版本常量、Provider Descriptor、错误文案与中英文 README 同步更新。
+- 版本探测改为严格解析 `codex-cli <SemVer>`：精确集合直接启动；SemVer 优先级高于当前稳定基线 `0.152.1` 的版本在 stderr 输出兼容性警告后尽力启动；未验证且不高于基线的版本、同核心版本的 Build Metadata 变体与 Pre-release、非法输出继续在创建运行目录前拒绝。
+- 前向启动不放宽协议：Provider 继续使用完整 JSON Schema 严格校验 App Server 消息；未知或结构不兼容的 Frame 仍进入可见失败，不静默忽略，也不把未验证新版本写入“明确支持”集合。
+- 本机 `codex-cli 0.152.1` 重新生成的官方聚合 Schema 与仓库内 `0.152.0` 文件逐字节一致，因此保留原 Schema 文件和 SHA-256，仅记录两版本共同验证事实。
+- 前一 QR-only 阶段的修改现已提交并推送：总控 `56eabdf`、Rust `14de45f`、协议 `f9bca8f`、Android `4465dab`。Android Actions Run `33493119530` 的常规检查与 Emulator Smoke Test 成功；Rust Run `33493124819` 的检查、同 Artifact 生产自动部署及公网 Probe 成功。
+
+关键决策：
+
+- “支持”仍表示 Schema、Fixtures 与真实 App Server 握手均已验证；更高版本只是默认获准尝试运行，不获得兼容保证。若上游协议发生真实破坏，严格解析会让 Provider 明确失败，由后续适配处理。
+- 新旧判断遵循 SemVer 优先级而不是字符串比较。`0.153.0-beta.1` 因核心版本高于 `0.152.1` 可尝试启动；`0.152.1+unverified` 与 `0.152.1-beta.1` 都不高于稳定基线且不在精确集合，因此拒绝。
+- 官方文档说明生成 Schema 与运行它的 Codex 版本精确对应；只有本地重新生成并确认字节一致后，才把 `0.152.1` 提升为已验证版本。对未来版本则保留启动兼容性但不提前宣称 Schema 兼容。
+
+验证结果：
+
+- `codex app-server generate-json-schema` 在本机 `codex-cli 0.152.1` 成功；新旧聚合文件 SHA-256 均为 `d8faa38d5f00aa7ddfe635a2d374ee5f871ffd217d4d175c72fbe7f009f4f669`，`diff --brief` 无差异。
+- 新增版本分类测试覆盖三个精确已验证版本、`0.152.2`、`0.153.0-beta.1`、`1.0.0` 及旧版本、Build Metadata、Pre-release、非法前缀和非法 SemVer 拒绝；既有“版本不匹配时不创建运行目录”回归继续通过。
+- 本机 `codex-cli 0.152.1` 的真实受管 App Server 完成 `initialize`/`initialized` 握手。Rust Workspace 通过 Rustfmt、Clippy `-D warnings`、95 个常规测试、5 个串行 ignored 真 Socket/真实 Codex 测试、Rustdoc `-D warnings` 与 Release `--workspace --all-targets --all-features --locked` 构建。
+- Rust 仓库与总控仓库 `git diff --check` 在最终修改后通过；协议和 Android 仓库没有本里程碑工作区修改。
+
+相关提交：
+
+- 已推送基线为总控 `56eabdf`、Rust `14de45f`、协议 `f9bca8f`、Android `4465dab`，均位于各自 `master`。
+- 本里程碑的 Rust 兼容代码、依赖锁定与 README 位于 `14de45f` 后的未提交工作区；本日志位于总控 `56eabdf` 后的未提交工作区。未创建提交、未推送，也未更新 Rust Submodule 指针。
+
+遗留事项：更高 Codex 版本发生不兼容时仍需按实际错误重新生成 Schema 并适配；这符合“默认运行、出错后再兼容”的既定策略。Android CI Artifact 仍需以非 USB 方式干净安装，并完成唯一尚未验证的物理二维码闭环；稳定签名 Release 在该验收之后再规划。
+
+下一目标：不使用 USB，在 Android 15 真机干净安装 CI APK，通过蜂窝公网扫描 Host 终端 QR，完成首次批准、自动 Relay 连接和 Session/Event 恢复验收。
 
 ### 2026-09-01 — QR-only 公网首次配对实现与生产路由发布
 
