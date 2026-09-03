@@ -14,8 +14,8 @@
 
 最后更新：2026-09-03
 
-- 当前阶段：Android 15 真机已经完成 QR-only 公网首次配对、Host 本机批准、凭据保存、自动 Relay 连接、真实 Session 恢复及 Host stop/start 自动重连。开发期允许 USB 安装本地 Debug APK、启动应用和读取诊断日志，但 USB/ADB 绝不传输配对参数或业务流量；蓝牙、共享 LAN、Deep Link 和手工 URI 均不是首次配对路径。认证 LAN 仅保留为已配对设备的显式后续连接选项。
-- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；配对终态 Frame 现在完成 WebSocket 关闭握手后才撤销临时 Relay route，Android 不再因 EOF 永久停在“正在配对”；Relay Host 等待循环也会响应退出标志，不再被持续心跳阻止优雅停止。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认在明确警告后尽力启动，仍使用严格的 `0.152.1` Schema。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
+- 当前阶段：Android 15 真机已经完成 QR-only 公网首次配对与真实 Session 恢复；Linux 本机新增 `ap` 单命令工作流，按 `codex`、`codex-nona`、`codex-rinia` 精确选择 App Server profile，由 systemd user transient service 保持 Host 跨终端运行。首次冷启动会自动显示一次配对 QR，运行中可用 `ap qrcode` 再生成。开发期允许 USB 安装本地 Debug APK、启动应用和读取诊断日志，但 USB/ADB 绝不传输配对参数或业务流量。
+- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；配对终态 Frame 可靠交付、Relay Host 可停止检查及 systemd SIGTERM 有序清理均已闭合。`ap` 支持启动/复用、profile 切换、独立 QR、状态、日志与停止，不覆盖原有三个 Codex 命令。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认尽力启动，仍使用严格的 `0.152.1` Schema。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
 - 唯一下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的首个可写回切片——远程批准/拒绝请求，并保持能力门禁、身份绑定、超时及只允许当前活跃订阅响应的约束。
 - 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
@@ -28,9 +28,41 @@
 - 经 QR 配对的真实 Android 15 设备通过公网 Relay 完成至少一次批准和一次拒绝，Codex App Server 收到精确响应，Session/Event 顺序和只读观察功能不回归；Relay 继续只能看到不透明内层 TLS 字节。
 - 失败、超时、Provider 不支持或 Channel capability 不完整时必须显式降级为只读并显示原因，不得猜测批准或静默吞掉响应。
 - 验收不扩展任意命令、自由文本输入、离线恢复、Bot Channel、iOS/HarmonyOS 或数据库；App 功能达到发布验收阶段后，再用对应 GitHub Actions APK Artifact 完成非 USB 安装验收。
-- App 功能达到发布验收阶段后，真机安装来源必须切换为对应 GitHub Actions APK Artifact；该要求不阻塞当前本地 Debug APK 开发。
 
 ## 历史记录
+
+### 2026-09-03 — `ap` 单命令 Host、Codex 与二维码工作流
+
+状态：实现、文档、自动化与本机 systemd/Codex/二维码生命周期验证已完成；本次 Rust 与总控日志修改尚未提交。Host 当前由 `ap` 以 `codex-rinia` profile 保持运行。
+
+完成内容：
+
+- 新增 Linux 快捷器 `scripts/ap` 并通过 `~/.local/bin/ap` 暴露：`ap`、`ap nona`、`ap rinia` 会启动或复用匹配 profile 的 Host，再连接 Codex TUI；额外 Codex 参数原样转发。`ap status`、`ap stop`、`ap logs` 和仅启动服务的 `ap host [profile]` 覆盖日常运维。
+- 冷启动或 profile 切换后，`ap` 会在当前终端自动运行一次 QR-only Pairing；扫码完成后继续进入 Codex。用户可用 `Ctrl+C` 取消这次二维码，systemd Host 不受影响；Host 已运行时不会重复强制二维码，`ap qrcode` 可随时创建新的两分钟一次性二维码。
+- Host 运行状态新增 PID 和可选 Codex executable，快捷器据此只复用完全相同的 profile；旧 Host 状态缺少 executable 时仍可反序列化，并会执行一次明确的有序切换。`codex`、`codex-nona`、`codex-rinia` 原命令没有被覆盖。
+- Host 改由 `systemd-run --user` transient service 托管，使用 `Type=exec`、`KillMode=mixed`、30 秒停止上限和 Journal 日志。Workspace 为 `ctrlc` 启用 `termination` feature，使 systemd 的 SIGTERM/SIGHUP 进入现有 stop 路径，而不是直接杀死主进程并遗留 Codex socket。
+- 本机安装两个符号链接：`~/.local/bin/agentpulse` 指向当前 Workspace Release 二进制，`~/.local/bin/ap` 指向版本化脚本；`.bashrc` 已经把 `~/.local/bin` 放在 PATH 首位，因此无需修改或重新加载 shell 配置。
+
+关键决策：
+
+- Codex `--remote` 只是把终端 UI 连接到 App Server；认证、历史和 Thread 由 App Server profile 决定。因此快捷器必须让 Host 与 TUI 使用同一个 executable wrapper，不能把 `nona`/`rinia` 随意连到默认 profile。默认 profile 缺少当前配置 Thread 时的真实启动失败验证了这一边界。
+- Host 留在后台由 systemd user manager 保证，不依赖 `nohup` 或调用终端的进程组。profile 切换会有意停止单一 Host、等待 PID 与 transient unit 完全释放，再启动新 profile，避免两个 App Server 争用同一私有 socket。
+- 自动二维码只发生在本次调用实际启动 Host 时；已配对用户的每次 Codex 启动不会被多余 QR 阻塞。独立 `ap qrcode` 仍严格调用现有 `agentpulse pair`，没有新增手工 Token、URI、ADB 或蓝牙路径。
+
+验证结果：
+
+- `ap host rinia` 在独立命令结束后仍由 systemd 保持 Host；`ap status` 返回 Provider `running`、Relay `waiting_or_tunneling`、PID 与 `/usr/local/bin/codex-rinia`。`ap rinia --version` 在已运行时直接复用并返回 `codex-cli 0.152.1`。
+- 完整冷启动 `ap rinia --version` 实际启动 Host 并自动输出一次终端 QR；取消 Pairing 后 `ap status` 仍显示同一 Host 在线。`ap qrcode` 也独立输出真实两分钟 QR，取消后不影响稳定 Host。
+- 启用 SIGTERM 处理后的 `ap stop` 使 systemd unit 变为 `not-found/inactive/dead`，私有 Codex runtime directory 与 socket 均不存在；修复前真实复现的 systemd SIGKILL 子进程与孤立 socket 不再出现。
+- Bash 语法、Rustfmt、Workspace Clippy `-D warnings`、95 个常规测试、6 个串行 ignored 真 Socket/真实 Codex 测试、Rustdoc `-D warnings`、Release `--workspace --all-targets --all-features --locked` Build 及 Rust/总控 `git diff --check` 通过。一次首次并行 Workspace 测试中的既有私有目录测试失配，目标测试、Provider 全集及完整 Workspace 立即独立复跑均通过，未把首次失败记为成功。
+
+相关提交：
+
+- 当前已提交基线为总控 `78fb284`、Rust `0736dab`、Android `8755a09`；快捷脚本、Host 状态/SIGTERM 支持、README 与本日志位于这些提交后的未提交工作区。未创建提交、未推送，也未更新总控仓库的 Rust Submodule 指针；`~/.local/bin` 两个符号链接属于本机安装状态而非 Git 文件。
+
+遗留事项：单个 Host 同时只运行一个 Codex profile，切换 profile 会使手机和已有 Remote TUI 短暂断开后重连；不同 profile 必须配置实际存在于对应 `CODEX_HOME` 的 Thread。稳定签名 Android Release 与 Actions Artifact 安装仍待 App 功能完成后验收。
+
+下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的远程批准/拒绝闭环，并在同一 QR 配对真机公网链路上验证能力门禁、一次性响应、超时和错误路径。
 
 ### 2026-09-03 — QR-only 真机配对闭环与终态可靠交付
 
