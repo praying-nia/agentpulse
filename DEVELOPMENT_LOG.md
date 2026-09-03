@@ -14,22 +14,55 @@
 
 最后更新：2026-09-03
 
-- 当前阶段：首次配对已收敛为唯一的二维码路径并已提交、推送、通过 Android/Rust CI 与生产 Relay 自动部署；物理扫码仍待最终验收。Host 把两分钟临时配对 Listener 只绑定到 Loopback，并在 `ap.nonamenona.top:19191` 上认证发布临时 route；Android 扫码后从 QR 取得 Relay 参数、完成内层指纹钉扎配对、保存并选择 Relay，然后自动连接。USB、ADB、蓝牙、共享 LAN、Deep Link 和手工 URI 均不是首次配对路径；认证 LAN 仅保留为已配对设备的显式后续连接选项。
-- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认在明确警告后尽力启动，仍使用严格的 `0.152.1` Schema，实际协议不兼容会进入可见 Provider 失败而不会静默忽略。`0.152.0` 与 `0.152.1` 官方聚合 Schema 逐字节相同。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
-- 唯一下一目标：不使用 USB，在 Android 15 真机安装本次新 APK，通过蜂窝公网扫描 Host 终端 QR，完成首次批准、自动 Relay 连接和 Session/Event 恢复验收。
+- 当前阶段：Android 15 真机已经完成 QR-only 公网首次配对、Host 本机批准、凭据保存、自动 Relay 连接、真实 Session 恢复及 Host stop/start 自动重连。开发期允许 USB 安装本地 Debug APK、启动应用和读取诊断日志，但 USB/ADB 绝不传输配对参数或业务流量；蓝牙、共享 LAN、Deep Link 和手工 URI 均不是首次配对路径。认证 LAN 仅保留为已配对设备的显式后续连接选项。
+- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；配对终态 Frame 现在完成 WebSocket 关闭握手后才撤销临时 Relay route，Android 不再因 EOF 永久停在“正在配对”；Relay Host 等待循环也会响应退出标志，不再被持续心跳阻止优雅停止。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认在明确警告后尽力启动，仍使用严格的 `0.152.1` Schema。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
+- 唯一下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的首个可写回切片——远程批准/拒绝请求，并保持能力门禁、身份绑定、超时及只允许当前活跃订阅响应的约束。
 - 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
 ### 下一目标的验收边界
 
-“真机 QR-only 首次配对验收”完成时应满足：
+“Android 远程批准/拒绝”完成时应满足：
 
-- APK 通过下载 CI Artifact 或其他非 USB 分发方式安装；首次配对过程中不启用 USB Debug、ADB、蓝牙或共享 LAN，也不手工输入 URI、地址、端口或 Token。
-- Host 已配置生产 Relay 并保持运行；`agentpulse pair` 只在临时 route 得到 Relay `host_waiting` 后显示二维码，Android 只通过应用内相机扫描该二维码。
-- Host 终端显示真实 Android 设备身份并要求显式批准；批准后 Android 保存 QR 中的 `ap.nonamenona.top:19191`、自动选择 Relay 并自动连接，不再要求用户绑定参数。
-- 真机通过蜂窝公网恢复至少一个真实 Session/Baseline 与后续 Event，Relay 仍看不到内层 Token、证书身份或 Session/Event 明文；两分钟过期、拒绝或错误身份不得覆盖既有凭据。
-- 验收不扩展稳定签名 Android Release、Bot Channel、iOS/HarmonyOS、Provider 写回或数据库。
+- Codex Provider 只在上游真实发出审批请求时声明和产生对应 Interaction；Bridge 与 Native Transport 必须按现有 capability route、Session owner、活跃订阅和 Interaction ID 校验响应。
+- Android 在当前 Session 中清晰展示待审批内容及上游允许的精确 scope，只能提交一次明确批准或拒绝；过期、重复、跨 Session、断线后的旧请求均不得写回。
+- 经 QR 配对的真实 Android 15 设备通过公网 Relay 完成至少一次批准和一次拒绝，Codex App Server 收到精确响应，Session/Event 顺序和只读观察功能不回归；Relay 继续只能看到不透明内层 TLS 字节。
+- 失败、超时、Provider 不支持或 Channel capability 不完整时必须显式降级为只读并显示原因，不得猜测批准或静默吞掉响应。
+- 验收不扩展任意命令、自由文本输入、离线恢复、Bot Channel、iOS/HarmonyOS 或数据库；App 功能达到发布验收阶段后，再用对应 GitHub Actions APK Artifact 完成非 USB 安装验收。
+- App 功能达到发布验收阶段后，真机安装来源必须切换为对应 GitHub Actions APK Artifact；该要求不阻塞当前本地 Debug APK 开发。
 
 ## 历史记录
+
+### 2026-09-03 — QR-only 真机配对闭环与终态可靠交付
+
+状态：实现、自动化与 Android 15 真机公网验证已完成；本次 Rust/Android 修复尚未提交。开发期使用本地 Debug APK，GitHub Actions APK Artifact 验收推迟到 App 功能完成后。
+
+完成内容：
+
+- 修复 Pairing Server 发送 `succeeded` 或终态错误后立即返回、Host 随即停止一次性 Relay Connector，导致终态 WebSocket Frame 尚未抵达 Android 就被截断的问题。服务端现在发送 Close 后最多等待两秒完成客户端关闭握手，再允许临时 route 清理；成功、拒绝、容量、非法请求和非法凭据路径使用同一终止语义。
+- 新增真实 TLS/WebSocket 回归测试，证明客户端收到 `succeeded` 和服务端 Close 之前 Pairing Session 不会提前返回；Android 实测从原来的 `Pending → EOFException` 变为 `Pending → Succeeded → Close 1000`。
+- 修复常驻 Host 收到 stop 后可能永久卡在 Relay Connector join 的问题：Relay 等待循环在阻塞读取前后均检查退出标志，持续 Ping 不再无限刷新读取超时并掩盖退出。修复后二次 `agentpulse stop` 在约两秒内完整退出，运行目录正常释放，无需强制终止或人工清理。
+- Android 为配对与 Relay 外层握手增加不包含 Token/URI 的生命周期日志；配对失败标题不再继续显示“正在配对”，空异常消息使用明确兜底文案。USB 仅用于覆盖安装本地 Debug APK、启动应用和读取日志，实际 Bootstrap 与后续业务链路仍只经过应用内相机 QR 和公网 Relay。
+
+关键决策：
+
+- `succeeded` 应用 Frame 的写入成功不等于公网链路已可靠交付；Pairing route 的生命周期必须覆盖 WebSocket Close 握手，短超时只负责给异常客户端提供有界退出。
+- Host 的 stop 标志必须能在 Relay 心跳活跃时生效；检查点放在每次控制 Frame 读取前后，既不改变正常 Ping/Pong，也保证下一次心跳或既有读取超时能够唤醒退出。
+- 开发期真机允许 USB 调试以提高诊断效率，但 USB 不是产品配对方式，也不得通过 ADB reverse/forward、参数注入或业务转发绕过二维码。Actions Artifact 属于 App 完成后的发布验收，不作为当前开发迭代的前置条件。
+
+验证结果：
+
+- Android 本地 Debug APK 通过 `lintDebug testDebugUnitTest assembleDebug` 并覆盖安装到 vivo V2282A（Android 15）；真机经相机扫描终端 QR 和 `ap.nonamenona.top:19191` 收到 `Pending`、`Succeeded`、Close 1000，随后自动保存凭据并建立正式 Relay tunnel。
+- 真机恢复真实 Codex Session `重构SummonGssProjectileTask上下文`、Cursor 1，界面显示“空闲 · 已连接”、工作区 `/home/nona/mcg` 与 Provider `Codex`。新 route 在 Host 刷新前出现的短暂 `authentication_failed` 可见并自动重试，刷新后恢复。
+- 修复后的 Host 完成真实 stop/start：旧进程约两秒退出，新 Host 正常启动；手机先得到有界 `host_unavailable`，约十八秒后自动重新建立 tunnel，同一 Session 再次显示“空闲 · 已连接”。
+- Rust 通过 Rustfmt、Workspace Clippy `-D warnings`、95 个常规测试、6 个串行 ignored 真 Socket/真实 Codex 测试、Rustdoc `-D warnings` 与 Release `--workspace --all-targets --all-features --locked` 构建；Rust、Android 与总控仓库 `git diff --check` 通过。
+
+相关提交：
+
+- 当前已提交基线为总控 `4bbe0f5`、Rust `6a71657`、Android `4465dab`；Rust 配对/Relay 退出修复、Android 诊断/UI 修复及本日志位于这些提交后的未提交工作区。未创建提交、未推送，也未更新总控仓库的 Rust/Android Submodule 指针。
+
+遗留事项：当前手机因调试过程中重复完成配对而在 Host 留有多条同设备凭据，可在确认保留的当前凭据后显式撤销旧设备；稳定签名 Release 与 Actions Artifact 真机安装待 App 功能完成后验收。任意命令、结构化输入、离线恢复、Bot Channel、iOS/HarmonyOS 和数据库仍未实现。
+
+下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的远程批准/拒绝闭环，并在同一 QR 配对真机公网链路上验证能力门禁、一次性响应、超时和错误路径。
 
 ### 2026-09-03 — Codex 新版本尽力启动兼容门禁
 
