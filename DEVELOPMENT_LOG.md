@@ -14,8 +14,8 @@
 
 最后更新：2026-09-03
 
-- 当前阶段：Android 15 真机已经完成 QR-only 公网首次配对与真实 Session 恢复；Linux 本机 `ap` 单命令工作流按 `codex`、`codex-nona`、`codex-rinia` 精确选择 App Server profile，由 systemd user transient service 保持 Host 跨终端运行。`ap` 不读取或保存 Thread 配置，只临时跟踪当前 App Server 中启动或恢复的 Thread；每次前台调用都以调用 shell 的当前目录启动 Codex。首次冷启动会自动显示一次配对 QR，运行中可用 `ap qrcode` 再生成。开发期允许 USB 安装本地 Debug APK、启动应用和读取诊断日志，但 USB/ADB 绝不传输配对参数或业务流量。
-- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；配对终态 Frame 可靠交付、Android 成功终态清理、Relay Host 可停止检查及 systemd SIGTERM 有序清理均已闭合。`ap` 支持启动/复用、profile 切换、Shell Proxy 同步、逐次工作目录、独立 QR、状态、日志与停止，不覆盖原有三个 Codex 命令。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认尽力启动，仍使用严格的 `0.152.1` Schema。所有通用示例端口继续统一为 `2333`，`19191` 只描述真实生产实例。
+- 当前阶段：Android 已按参考设计重构为连接、会话、设置三个一级页面和会话详情，采用统一卡片层级、响应式手机/宽屏导航、可持久化的系统/浅色/深色及动态/预设/自定义配色；会话与事件在展示层均为最新优先，Reducer 原始顺序不变。Android 15 真机此前已经完成 QR-only 公网首次配对与真实 Session 恢复；Linux 本机 `ap` 单命令工作流继续按 `codex`、`codex-nona`、`codex-rinia` 精确选择 App Server profile。
+- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；本次 Android 视觉与信息架构重构、会话搜索/状态筛选、待审批置顶、只读消息入口说明、主题偏好存储和中英文资源已闭合。`ap` 支持启动/复用、profile 切换、Shell Proxy 同步、逐次工作目录、独立 QR、状态、日志与停止。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认尽力启动，仍使用严格的 `0.152.1` Schema。
 - 唯一下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的首个可写回切片——远程批准/拒绝请求，并保持能力门禁、身份绑定、超时及只允许当前活跃订阅响应的约束。
 - 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
 
@@ -30,6 +30,39 @@
 - 验收不扩展任意命令、自由文本输入、离线恢复、Bot Channel、iOS/HarmonyOS 或数据库；App 功能达到发布验收阶段后，再用对应 GitHub Actions APK Artifact 完成非 USB 安装验收。
 
 ## 历史记录
+
+### 2026-09-03 — Android 视觉、导航与最新优先信息架构重构
+
+状态：实现及 JVM 测试、Android 测试源码编译、Lint 与 Debug APK 构建已完成；连接真机存在，但用户在设备端拒绝测试 APK 安装，因此本次 Instrumentation 实际运行 0 项，不记为通过。本次 Android 与总控日志修改尚未提交。
+
+完成内容：
+
+- 将单文件 Compose 界面拆为 Activity 边界、应用页面层和主题层；手机采用连接、会话、设置三栏底部导航，会话详情为二级页，840dp 以上使用 Navigation Rail 和会话列表/详情双栏。一级页切换和手机会话列表/详情进入返回均使用带方向的短距离滑动与淡入淡出，实时 Event 更新通过稳定页面 Key 避免重复触发整页动画。
+- 连接首页重组扫码、Host 状态、LAN/Relay 选择、连接操作和最近会话；会话页新增标题/工作区搜索及全部、运行、等待、结束状态筛选；设置页集中主题、Relay、通知入口、版本和带确认的忘记设备操作。
+- 会话继续按 `updatedAt` 倒序；事件只在展示层按 `sequence` 倒序，待审批按请求时间倒序固定在事件之前。Reducer 的正序追加、连续序号检查、256 条窗口与通知增量检测均未改变。
+- 新增独立的非敏感 UI Preferences DataStore，支持跟随系统/浅色/深色、Android 12+ 动态色、五套品牌预设及六位 HEX 自定义主色；自定义色生成浅深 Compose ColorScheme，成功、警告、错误语义色保持稳定。
+- 参考稿中的消息输入框作为可点击只读占位，点击明确说明当前版本只支持查看与审批，不产生协议请求；现有审批选项、确认与提交状态完整保留。中英文资源和主题切换时的系统栏图标可读性同步完成。
+
+关键决策：
+
+- 本阶段只改变 Android 展示与本地偏好，不修改 Domain/Native 协议、ConnectionService Action、Host、Relay 或审批回写边界。
+- Reducer 保留协议权威顺序；“最新在上”是可独立测试的 Presentation 规则，避免破坏事件连续性和重要事件通知。
+- UI 偏好不属于 Host 凭据，不进入 Android Keystore 加密 Payload；动态色在 Android 12 以下确定性回退为 AgentPulse 靛蓝。
+- 未引入整套 View Material Components 依赖；预设/自定义 seed 由轻量、确定性的 Compose 色调生成器转换为浅深 ColorScheme，保持离线构建可复现。
+
+验证结果：
+
+- `./gradlew test lintDebug assembleDebug` 通过；App JVM 测试 7 项全部通过，其中新增 3 项覆盖事件倒序且不修改输入、会话最新优先/筛选搜索和 HEX 校验。Protocol 测试随同 `test` 通过。
+- `:app:compileDebugAndroidTestKotlin` 通过，新增启动与底部导航设置页测试可编译；`git diff --check` 在 Android 与总控仓库通过。Debug APK 位于 `app/build/outputs/apk/debug/app-debug.apk`。
+- `connectedDebugAndroidTest` 在 vivo V2282A Android 15 安装阶段被设备端以 `INSTALL_FAILED_ABORTED: User rejected permissions` 拒绝，测试框架报告 0 tests；未把该外部条件失败描述为测试成功，也未绕过设备确认。
+
+相关提交：
+
+- 当前已提交基线为总控 `4e749a6`、Android `5e7cd7f`。本里程碑代码与日志位于这些提交后的工作区；未创建提交、未推送，也未更新总控仓库中的 Android Submodule 指针。
+
+遗留事项：新视觉尚未在真机允许安装后执行 Instrumentation 和人工截图对照；自由文本发送仍按设计不可用，界面只提供带原因说明的占位。协议、Host 与 Relay 均无本次修改。
+
+下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的远程批准/拒绝闭环，并在同一 QR 配对真机公网链路上验证能力门禁、一次性响应、超时和错误路径。
 
 ### 2026-09-03 — `ap` 无状态 Thread 发现、Proxy 与逐次工作目录
 
