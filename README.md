@@ -34,9 +34,9 @@ Codex / Claude Code / OpenCode / DeepSeek Harness
 - **Channel** 负责 AgentPulse 如何向用户展示信息并接收用户响应。
 - Provider 与 Channel 彼此独立，仅通过统一的领域模型和协议模型协作。
 
-The native Android, iOS, and HarmonyOS applications are intended to become the full AgentPulse experience, including session browsing, plans, progress, real-time events, approvals, input, LAN connections, and public-network connections through the optional Relay. The implemented Native Transport v1 currently provides the complete local read-only subset. Bot Channels provide a lightweight, degraded experience constrained by each third-party platform and may communicate without the AgentPulse Relay.
+The native Android, iOS, and HarmonyOS applications are intended to become the full AgentPulse experience, including session browsing, plans, progress, real-time events, approvals, input, LAN connections, and public-network connections through the optional Relay. Native Transport v3 now retains the current Host run in memory and incrementally repairs client gaps after disconnects. Bot Channels provide a lightweight, degraded experience constrained by each third-party platform and may communicate without the AgentPulse Relay.
 
-Android、iOS 与 HarmonyOS 原生应用的目标是提供完整 AgentPulse 体验，包括 Session 浏览、Plan、进度、实时事件、审批、输入、LAN 直连，以及通过可选 Relay 进行公网连接；当前已实现的 Native Transport v1 提供其中完整的本地只读子集。Bot Channel 是受第三方平台能力限制的轻量兼容通道，并且可以不经过 AgentPulse Relay。
+Android、iOS 与 HarmonyOS 原生应用的目标是提供完整 AgentPulse 体验，包括 Session 浏览、Plan、进度、实时事件、审批、输入、LAN 直连，以及通过可选 Relay 进行公网连接；Native Transport v3 会在内存中保留当前 Host 运行的完整事件，并在断连后增量修复客户端缺口。Bot Channel 是受第三方平台能力限制的轻量兼容通道，并且可以不经过 AgentPulse Relay。
 
 ## Repositories / 仓库组成
 
@@ -70,9 +70,9 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-AgentPulse now provides a complete read-only Android path from the managed Codex App Server through RuntimeHost/Bridge and authenticated Native TLS over either private LAN or the public Relay. First trust is established only by scanning a short-lived Host-terminal QR code: its route is published through Relay, still requires Host-terminal approval, and needs no USB, ADB, Bluetooth, or shared LAN. Host identity, per-device credential lifecycle, strict baseline/live cursor synchronization, bounded delivery, heartbeat cleanup, reconnect, encrypted Android credential recovery, production Relay deployment, and public-network recovery are implemented. iOS and HarmonyOS remain scaffolds; persistence and write-back remain separate future milestones.
+AgentPulse now provides an Android observation, approval, atomic Plan-form, and common remote-command path from the managed App Server through RuntimeHost/Bridge and authenticated Native TLS over either private LAN or the public Relay. First trust is established only by scanning a short-lived Host-terminal QR code: its route is published through Relay, still requires Host-terminal approval, and needs no USB, ADB, Bluetooth, or shared LAN. Native Transport v3 retains the complete current Host-run history in memory and incrementally repairs per-Session gaps after ordinary disconnects; Android keeps the matching process-memory cache and resets it when the Host run changes. Remote prompts use bounded process-memory FIFO queues, and `/resume` hydrates message history through paginated App Server reads. iOS and HarmonyOS remain scaffolds; cross-process persistence remains outside the current boundary.
 
-AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 Native TLS，并通过私有 LAN 或公网 Relay 到 Android 原生 App 的完整只读链路。首次信任只允许扫描 Host 终端生成的短时二维码：临时路由经 Relay 发布，仍需 Host 终端确认，并且不依赖 USB、ADB、蓝牙或共享局域网。Host 身份、逐设备凭据生命周期、严格 Baseline/Live Cursor 同步、有界投递、心跳清理、重连、Android 加密凭据恢复、生产 Relay 部署及公网恢复均已实现。iOS 与 HarmonyOS 仍为 Scaffold；持久化与写回仍是独立的未来里程碑。
+AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 Native TLS，并通过私有 LAN 或公网 Relay 到 Android 原生 App 的观察、审批、原子 Plan 表单与常用远程指令链路。首次信任只允许扫描 Host 终端生成的短时二维码：临时路由经 Relay 发布，仍需 Host 终端确认，并且不依赖 USB、ADB、蓝牙或共享局域网。Native Transport v3 在内存中保留当前 Host 运行周期的完整历史，普通断连后按 Session 增量补齐；Android 保留对应的进程内缓存，Host 运行周期改变时明确重置。远程 Prompt 使用有界进程内 FIFO，`/resume` 通过 App Server 分页恢复消息历史。iOS 与 HarmonyOS 仍为 Scaffold；跨进程持久化不在当前边界内。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 

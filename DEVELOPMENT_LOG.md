@@ -12,24 +12,87 @@
 
 ## 当前状态
 
-最后更新：2026-09-03
+最后更新：2026-09-04
 
-- 当前阶段：Android 已按参考设计重构为连接、会话、设置三个一级页面和会话详情，采用统一卡片层级、响应式手机/宽屏导航、可持久化的系统/浅色/深色及动态/预设/自定义配色；会话与事件在展示层均为最新优先，Reducer 原始顺序不变。Android 15 真机此前已经完成 QR-only 公网首次配对与真实 Session 恢复；Linux 本机 `ap` 单命令工作流继续按 `codex`、`codex-nona`、`codex-rinia` 精确选择 App Server profile。
-- 已完成：此前全部只读与 QR-only 公网 Bootstrap 能力；本次 Android 视觉与信息架构重构、会话搜索/状态筛选、待审批置顶、只读消息入口说明、主题偏好存储和中英文资源已闭合。`ap` 支持启动/复用、profile 切换、Shell Proxy 同步、逐次工作目录、独立 QR、状态、日志与停止。Codex Provider 已明确验证 CLI `0.150.1`、`0.152.0`、`0.152.1`，高于 `0.152.1` 的合法 SemVer 默认尽力启动，仍使用严格的 `0.152.1` Schema。
-- 唯一下一目标：实现 Codex Provider → Bridge/Native Transport → Android 的首个可写回切片——远程批准/拒绝请求，并保持能力门禁、身份绑定、超时及只允许当前活跃订阅响应的约束。
-- 尚未决定：持久化介质与恢复存储方案。Relay route 继续只驻留内存，数据库，特别是 SQLite，不是当前架构的既定依赖。
+- 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、Codex Plan 选择/文本表单、消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
+- 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
+- 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
+- 唯一下一目标：在 Android 15 真机公网 Relay 上完成一次 Native v3 端到端验收，覆盖 Plan 多字段表单、敏感输入、常用指令、Prompt Queue 断连恢复与跨 128 Event 增量补齐。
 
 ### 下一目标的验收边界
 
-“Android 远程批准/拒绝”完成时应满足：
-
-- Codex Provider 只在上游真实发出审批请求时声明和产生对应 Interaction；Bridge 与 Native Transport 必须按现有 capability route、Session owner、活跃订阅和 Interaction ID 校验响应。
-- Android 在当前 Session 中清晰展示待审批内容及上游允许的精确 scope，只能提交一次明确批准或拒绝；过期、重复、跨 Session、断线后的旧请求均不得写回。
-- 经 QR 配对的真实 Android 15 设备通过公网 Relay 完成至少一次批准和一次拒绝，Codex App Server 收到精确响应，Session/Event 顺序和只读观察功能不回归；Relay 继续只能看到不透明内层 TLS 字节。
-- 失败、超时、Provider 不支持或 Channel capability 不完整时必须显式降级为只读并显示原因，不得猜测批准或静默吞掉响应。
-- 验收不扩展任意命令、自由文本输入、离线恢复、Bot Channel、iOS/HarmonyOS 或数据库；App 功能达到发布验收阶段后，再用对应 GitHub Actions APK Artifact 完成非 USB 安装验收。
+- 真机通过公网 Relay 收到至少一个包含选项、Other/文本与敏感字段的 Plan 表单；必须一次性提交全部字段，敏感答案不得出现在后续状态或历史中。
+- `/model`、`/resume`、`/clear`、`/plan` 与普通 Prompt 均实际到达受管 Codex App Server；`/resume` 分页历史无重复，当前工作目录优先。
+- 活动 Turn 中默认发送进入 FIFO，显式 `/steer` 才改变当前 Turn；断网与 `stop` 后 Queue 不丢失，重连/显式恢复后按原顺序发送。
+- 同一 Android/Host 进程中跨越 128 条 Event 的断连缺口按 Cursor 分页补齐且不产生历史通知风暴；Host 重启后新 `host_run_id` 清空旧历史，全程不引入数据库。
 
 ## 历史记录
+
+### 2026-09-04 — Plan 原子表单与常用远程指令
+
+状态：Domain JSON v2、Native Transport v3、Rust/Android 实现、跨语言 Fixture 与自动化验证已完成；真实 Android 公网 Relay 端到端验收尚未执行。本次总控、Rust、Android 与协议规范修改均尚未提交。
+
+完成内容：
+
+- Core 新增消息角色、原子 Form Request/Response、字段与答案强类型，以及覆盖常用控制面的 Agent Command；Bridge 继续集中校验完整 Provider/Channel Capability Route。
+- Codex Provider 将 `item/tool/requestUserInput` 映射为多字段表单，保留选项、Other/自由文本、阻塞和敏感属性；回写后只保留“已响应”状态，不保留敏感答案。
+- Codex Provider 新增有界进程内 FIFO Prompt Queue、显式 Steer、停止/恢复/清空 Queue，以及 model、resume/new、plan、compact、review、rename、fork、status 和 permission profile 调用；所有 App Server 请求及响应继续通过生成 Schema 严格校验。
+- `/resume` 列表按当前 CWD 优先、组内更新时间倒序展示，并在首次恢复后使用 `thread/items/list` 升序分页补齐用户/助手消息；重复恢复已跟踪 Thread 不重复历史。
+- Native Transport v3 新增 `submit_command`/`command_result`，Domain JSON v2 新增 Form、消息角色和类型化指令；Android 新增可输入 Composer、Slash 建议、Plan 开关选择、表单 Card、Other/密码输入及原子提交。
+
+关键决策：
+
+- 只实现高频 Slash Command，不镜像全部 Codex App Server API；普通文本默认 Queue，只有显式 `/steer` 修改活动 Turn。
+- Queue 上限为每 Session 32 项、单项 64 KiB、Provider 合计 1 MiB；`stop` 与 `turn/start` 拒绝均保留并暂停 Queue，避免断连或暂时错误导致丢失/重试风暴。
+- Session/Event、Queue、交互和恢复历史均限定在当前进程内，不新增数据库或磁盘持久化。敏感表单答案只存在于一次 outbound payload，成功写入后立即丢弃。
+- 严格协议发生不兼容变更，因此 Domain 与 Native 分别升级至 v2/v3；配对协议仍为 v1，广告的新版本号与既有 CA/Token 可继续使用。
+
+验证结果：
+
+- Rust `cargo check --workspace --all-targets` 通过；`cargo test --workspace --all-targets -- --test-threads=1` 通过（常规测试 110 项，6 项需专用网络/真实 Codex 环境的测试保持 ignored）。新增覆盖全部指令 Payload、Queue 边界、原子表单、敏感答案生命周期、严格 App Server 控制请求与 Native v3 Fixture。
+- Android `./gradlew test lintDebug assembleDebug --console=plain` 通过，新增覆盖指令 Codec/Parser、Form 原子校验与敏感答案不进入 Reducer State；Debug APK 可构建。
+- Rustfmt、Clippy `-D warnings`、各仓库 `git diff --check` 与权威/Rust Native Fixture 镜像一致性通过。本里程碑未执行真机或真实受管 Codex 指令 E2E，不将其描述为已验证。
+
+相关提交：
+
+- 修改位于当前各仓库基线后的工作区；未创建提交、未推送，也未更新总控 Submodule 指针。
+
+遗留事项：Android 15 公网 Relay 下的表单、指令、Queue 断连恢复、跨 128 Event 补齐与 Host 重启 Reset 仍需一次完整真机验收；iOS/HarmonyOS 尚未实现 Native v3。
+
+下一目标：在 Android 15 真机公网 Relay 上完成 Plan 表单、常用指令、Queue 断连恢复与跨 128 Event 增量补齐的 Native v3 端到端验收。
+
+### 2026-09-03 — Native Transport v2 当前 Host 运行历史与增量恢复
+
+状态：实现、协议、跨语言 Fixture、自动化与真实 Loopback WebSocket 断线恢复测试已完成；未执行 Android 真机公网多页验收。本次总控、Rust、Android 与协议规范修改均尚未提交。
+
+完成内容：
+
+- Core 新增显式完整内存 Event 保留配置和按 Cursor 连续后缀查询；Host 生产路径使用该配置，默认有界 Reducer 配置仍可用于其他调用方。
+- Bridge 新增最多 128 条的 Session Sync Page，每条保留 Event 重新经过集中 Capability Route；只有最终页成功交付当前 Session/Pending Interaction Baseline 后才注册 Live Subscription。
+- Native Transport 直接升级为 v2 端点与 Subprotocol。Client Hello 携带 Host Run 和逐 Session Cursor，Server Hello 明确恢复是否接受；分页结果包含 Event Count、Reset 与 Catching-up 状态，最终 Baseline 与后续 Live Event 保持有序。
+- Android 客户端按 Host 保留进程内 Native State，重连 Hello 上报已连续应用的 Cursor；Reducer 按页暂存、校验计数与 Sequence、原子提交，移除旧的 256 Event 截断。Host Run 不同时立即清除旧 Session 缓存。
+- ConnectionService 在重试期间保留已有 UI 状态，禁止 Catch-up 历史通知，进入 Live 时只对仍 Pending 的 Interactive Approval 各通知一次。Native/配对 Golden Fixture、README 与权威协议同步 v2 语义。
+
+关键决策：
+
+- `host_run_id` 由 Host 进程中的 Native Channel 创建，WebSocket、Relay 与 RuntimeHost Source 重启不改变它；新 Host 进程创建新 ID。
+- Host 与 Android 都只保留本次运行/进程的完整历史，不使用 Session/Event 数据库或磁盘存储。断连是可恢复的运输事件，进程死亡则是明确的历史边界。
+- Native v2 不在同一端点兼容 v1 APK；已配对的 CA 与设备 Token 无需重新签发，Pairing 广告的 Native Transport Version 同步改为 2。
+- “最新在上”仅属于 Presentation；传输、缓存和 Reducer 必须按 Sequence 升序验证和应用。
+
+验证结果：
+
+- Rustfmt Check、Workspace Clippy `-D warnings`、Workspace `--all-targets` 105 个常规测试通过；Native 的 2 个 ignored 真实 Loopback WebSocket 测试单独通过，覆盖严格 v2 握手、订阅、断连、同 Run Cursor 增量恢复和错误路径。
+- Bridge 分页测试覆盖非最终页不进入 Live；Core 保留测试和 Android Reducer 测试均覆盖超过原 256 条窗口，Android 另覆盖同/异 Host Run 与多页原子提交。Rust/权威规范 Native v2 与 Pairing Fixture 逐字节一致。
+- Android `./gradlew test lintDebug assembleDebug compileDebugAndroidTestKotlin` 通过，Debug APK 与 Instrumentation 测试源码可构建；本里程碑未在真机安装或运行 Instrumentation，不将其记为已验证。各工作区 Diff/Whitespace Check 通过。
+
+相关提交：
+
+- 当前已提交基线为总控 `ef82119`、Rust `87de57a`、Android `800d6b9`、协议规范 `2d2022e`。本里程碑修改位于这些提交后的工作区；未创建提交、未推送，也未更新总控 Submodule 指针。
+
+遗留事项：Android 真机公网 Relay 的跨 128 Event 多页恢复和 Host 重启 Reset 尚未验收；Native v1 APK 必须升级才能连接 v2。跨进程历史与 Session/Event 数据库明确不在当前产品边界。
+
+下一目标：在 Android 15 真机公网 Relay 链路上完成跨 128 Event 断网增量恢复、通知抑制与 Host 新 Run 重置验收。
 
 ### 2026-09-03 — Android 视觉、导航与最新优先信息架构重构
 
