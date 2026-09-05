@@ -12,14 +12,15 @@
 
 ## 当前状态
 
-最后更新：2026-09-04
+最后更新：2026-09-05
 
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
 - 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
+- Model 选择安全性：`/model <id> [effort]` 先用实时 `model/list` 校验模型和该模型声明的推理强度，非法输入只产生明确拒绝 Event，不再写入 Turn 默认值、导致后续 `turn/start` 失败并暂停消息队列；Android 同时拒绝多余参数并规范化 effort 大小写。
 - 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；`/model` 和普通消息已到达 Host/Codex 并回显结果，提交框只在收到相关 `command_result` 后清空。真机复测发现旧 `/plan` 仅伪造提示词、实际 Turn 仍为 Default；该实现已修复并完成自动化与真实 App Server 握手验证，等待换用新 Host 后复验原生 Plan 多字段、Other 与敏感字段组合。
 - 退出稳定性：Host 会主动中断 Relay 与 Codex Proxy 活动连接，受管 App Server 使用独立进程组；手机在线、桌面 TUI 在线且 Turn 持续输出时实测 5.35 秒退出，无 systemd 超时或遗留 Runtime，并可立即重启。
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
-- 唯一下一目标：换用新 Release Host，在 Android 15 公网 Relay 上确认真实 Plan Turn 与多字段表单，并继续完成 Prompt Queue 断连恢复和跨 128 Event 增量补齐。
+- 唯一下一目标：在 Android 15 公网 Relay 链路完成 Prompt Queue 断连恢复验收。
 
 ### 下一目标的验收边界
 
@@ -29,6 +30,34 @@
 - 同一 Android/Host 进程中跨越 128 条 Event 的断连缺口按 Cursor 分页补齐且不产生历史通知风暴；Host 重启后新 `host_run_id` 清空旧历史，全程不引入数据库。
 
 ## 历史记录
+
+### 2026-09-05 — `/model` 非法输入不再锁死后续消息
+
+状态：根因、Host 防护、Android 参数解析、自动化回归、Release Host、USB 安装和 Android 15 公网 Relay 真机验证均已完成。本次 Rust、Android、协议说明与总控日志修改均尚未提交、未推送。
+
+完成内容：
+
+- 根因是旧 Host 直接把任意 model/effort 保存为 Session Turn 默认值，直到下一条 Prompt 的 `turn/start` 才被 Codex 拒绝；失败路径会按可靠队列策略保留队首并暂停，因此用户看到的是 `/model` 后手机再也发不出消息。
+- Model 选择现改为先请求实时 `model/list`，同时核对 model ID 与该模型的 `supportedReasoningEfforts`；只有完整匹配才原子更新默认值，非法 model/effort 返回可见的 `Model selection rejected` Event，既有默认值和 Prompt Queue 均不改变。
+- `/model` 目录输出附带每个模型支持的 effort，Android Parser 只接受一个 model 加至多一个 effort，并把 effort 规范化为小写；多余参数在手机端直接判为无效命令。
+
+关键决策：
+
+- 不在 Android 硬编码会随 Codex 版本变化的模型或 effort 清单；Host 对每次选择使用 App Server 的实时目录作为权威来源。Native `command_result` 仍只确认命令已交付 Provider，最终选择或拒绝结果继续通过有序 Domain Event 呈现。
+
+验证结果：
+
+- Codex Provider 测试 37 项通过、2 项按设计 ignored；Clippy `-D warnings`、Rustfmt、Release Host 构建与 `git diff --check` 通过。Android `testDebugUnitTest`、`lintDebug`、`assembleDebug` 通过。
+- Debug APK 已通过 USB 覆盖安装到 Android 15 设备 `10CD5Q1FAS0007Y`，Release Host 已安装并以 `codex-rinia` 启动。手机经既有公网 Relay 连接真实会话。
+- 真机先提交 `/model invalid-model impossible`，手机收到 `Model selection rejected: unknown model` 且输入框立即恢复；随后普通消息得到真实 Codex 回复 `AP_MODEL_RECOVERY_OK`。再提交合法 `/model gpt-5.6-sol medium`，收到 `Model set`，后续普通消息再次得到真实回复 `AP_VALID_MODEL_OK`。两条路径结束后输入框均可继续发送。
+
+相关提交：
+
+- 当前基线为总控 `58666b7`、Rust `1be8a7a`、Android `e700f15`；本次修改位于工作区，未创建提交、未推送，也未更新总控 Submodule 指针。
+
+遗留事项：本轮只关闭 `/model` 输入污染队列的问题；Plan 多字段、Queue 断连恢复和跨 128 Event 增量补齐仍按既有验收边界继续。
+
+下一目标：在当前 Android 15 公网 Relay 链路完成 Prompt Queue 断连恢复验收。
 
 ### 2026-09-04 — 原生 Codex Plan 协作模式
 
