@@ -22,16 +22,42 @@
 - 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；`/model` 和普通消息已到达 Host/Codex 并回显结果，提交框只在收到相关 `command_result` 后清空。真机复测发现旧 `/plan` 仅伪造提示词、实际 Turn 仍为 Default；该实现已修复并完成自动化与真实 App Server 握手验证，等待换用新 Host 后复验原生 Plan 多字段、Other 与敏感字段组合。
 - 退出稳定性：Host 会主动中断 Relay 与 Codex Proxy 活动连接，受管 App Server 使用独立进程组；手机在线、桌面 TUI 在线且 Turn 持续输出时实测 5.35 秒退出，无 systemd 超时或遗留 Runtime，并可立即重启。
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
-- 唯一下一目标：在 Android 15 公网 Relay 链路完成 Prompt Queue 断连恢复验收。
+- 配对与会话发现修复：Host 按设备独立注册 Relay 路由，每 100 ms 检查新增凭据；配对成功回执等待对应路由确认，超时返回错误并撤销未交付凭据。自动发现忽略未显式选择的 ephemeral 线程，避免首次对话的后台标题生成线程出现在手机会话列表。自动化回归与 Release 构建通过，尚未替换运行中的 Host，也未做本轮手机实测。
+- 已知问题：Codex CLI 0.153.0 的桌面本地计划选择框不会随手机启动实施而关闭。按用户决定不修改 Codex；可用 Escape 关闭旧框，避免再次确认实施。
+- 唯一下一目标：使用新 Host 在 Android 15 公网 Relay 链路验收扫码首次连接和首轮会话列表。
 
 ### 下一目标的验收边界
 
-- 真机通过公网 Relay 收到至少一个包含选项、Other/文本与敏感字段的 Plan 表单；必须一次性提交全部字段，敏感答案不得出现在后续状态或历史中。
-- `/model`、`/resume`、`/clear`、`/plan` 与普通 Prompt 均实际到达受管 Codex App Server；`/resume` 分页历史无重复，当前工作目录优先。
-- 活动 Turn 中默认发送进入 FIFO，显式 `/steer` 才改变当前 Turn；断网与 `stop` 后 Queue 不丢失，重连/显式恢复后按原顺序发送。
-- 同一 Android/Host 进程中跨越 128 条 Event 的断连缺口按 Cursor 分页补齐且不产生历史通知风暴；Host 重启后新 `host_run_id` 清空旧历史，全程不引入数据库。
+- 终端批准扫码后，手机在路由准备期间保持等待；成功后首次连接不再因路由未注册而出现 auth failed。
+- 已有设备连接时新增配对不等待旧连接心跳，且不打断已有连接。
+- 首轮对话后不出现后台标题生成的临时会话；主会话仍可持续通信。
+- 桌面计划选择框保留为已知问题；此前 Prompt Queue 断连恢复、多字段/敏感输入和跨 128 Event 验收继续作为未完成事项保留。
 
 ## 历史记录
+
+### 2026-09-09 — 扫码认证时序与临时标题会话修复
+
+状态：Host/Pairing/Provider 修复、自动化回归、文档与 Release Host 构建已完成；尚未安装新二进制或重启当前 Host，本轮未做 Android 真机验收。工作区修改未提交、未推送。
+
+完成内容：
+
+- 根因确认：配对原本在落盘凭据后立即返回成功，但共用 Relay 注册只在 15 秒心跳后发现新增设备；手机提前连接导致认证失败。改为每设备独立连接，由有界监督线程每 100 ms 发现新增凭据，不等待其他设备的注册或活动隧道结束。
+- `serve_with_ready` 在凭据生成后、成功回执前加入路由就绪屏障；Host 只在 Relay 确认注册后公开对应 ready route。配对等待最多 30 秒，失败发送既有 internal 错误并撤销未交付凭据，不改线协议。
+- Codex TUI 首次消息后会创建 ephemeral 标题生成线程。Provider 自动发现忽略此类未显式选择的线程，保留正常会话和显式选择的线程。
+- 已核对 Codex CLI 0.153.0 源码：桌面计划确认是本地 Selection View，远端回合开始不会关闭它。用户明确决定保留为已知问题；本轮未修改已安装 Codex，尝试生成的补丁已移除。
+
+验证结果：
+
+- Host 7 项单元测试和 1 项 CLI 集成测试通过，包含已有连接保持期间新增设备注册、撤销新设备不清除旧设备 ready 状态及有界退出。
+- Pairing 5 项常规单元测试、1 项协议 fixture 测试通过；另外显式运行 2 项 loopback TLS WebSocket 测试，通过就绪前没有成功回执、就绪后成功及关闭握手、就绪失败返回错误并撤销凭据。
+- Codex Provider 41 项测试通过，2 项既有专用测试保持 ignored；发现回归覆盖临时标题线程不会产生 Session Aggregate。
+- 三个变更 crate 的 Clippy `-D warnings`、Rustfmt、diff whitespace 检查及 Release Host 构建通过。产物为 `agentpulse-rs/target/release/agentpulse`。
+
+相关提交：总控基线 `e7bc629`、Rust 基线 `3520fe9`；本轮全部修改尚未提交、未推送，未更新 Submodule 指针。
+
+遗留事项：实际手机表现需加载新 Host 后验收；桌面计划选择框按用户决定不修。原有 Queue、多字段输入和历史增量验收未被本轮测试替代。
+
+下一目标：使用新 Host 在 Android 15 公网 Relay 链路验收扫码首次连接和首轮会话列表。
 
 ### 2026-09-09 — 计划实施确认与手机模型按钮选择
 
