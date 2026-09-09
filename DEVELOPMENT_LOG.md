@@ -13,11 +13,12 @@
 
 ## 当前状态
 
-最后更新：2026-09-05
+最后更新：2026-09-09
 
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
 - 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
 - Model 选择安全性：`/model <id> [effort]` 先用实时 `model/list` 校验模型和该模型声明的推理强度，非法输入只产生明确拒绝 Event，不再写入 Turn 默认值、导致后续 `turn/start` 失败并暂停消息队列；Android 同时拒绝多余参数并规范化 effort 大小写。
+- 手机按钮交互：`/model` 已支持实时分页模型目录 → 对应推理强度的两步按钮选择；正式 Plan 完成后显示“等待交互”，提供“实施计划 / 继续修改”。两者复用 Host 本地 Form，不冒充 Codex permission/tool 请求。计划修改、实施、待确认计划的手机断连恢复及模型切换后继续对话已通过 Android 15 公网 Relay 真机验证。
 - 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；`/model` 和普通消息已到达 Host/Codex 并回显结果，提交框只在收到相关 `command_result` 后清空。真机复测发现旧 `/plan` 仅伪造提示词、实际 Turn 仍为 Default；该实现已修复并完成自动化与真实 App Server 握手验证，等待换用新 Host 后复验原生 Plan 多字段、Other 与敏感字段组合。
 - 退出稳定性：Host 会主动中断 Relay 与 Codex Proxy 活动连接，受管 App Server 使用独立进程组；手机在线、桌面 TUI 在线且 Turn 持续输出时实测 5.35 秒退出，无 systemd 超时或遗留 Runtime，并可立即重启。
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
@@ -31,6 +32,39 @@
 - 同一 Android/Host 进程中跨越 128 条 Event 的断连缺口按 Cursor 分页补齐且不产生历史通知风暴；Host 重启后新 `host_run_id` 清空旧历史，全程不引入数据库。
 
 ## 历史记录
+
+### 2026-09-09 — 计划实施确认与手机模型按钮选择
+
+状态：Host 本地交互、Android 按钮界面、协议说明、自动化回归、USB 安装和公网 Relay 真机验收已完成。本轮未创建提交或推送。
+
+完成内容：
+
+- Codex 的非空正式 `plan` 条目作为助手消息保留；包含正式计划的成功 Turn 结束后进入 `WaitingForInteraction`，不再用 `SessionEnded` 清空实施交互。随后到达的 Idle 状态不会覆盖待选择状态。
+- Host 增加有界本地 Form 状态和响应通道。手机点击“实施计划”会在同一 Thread 使用原生 Default 模式发送实施请求，成功接受后才更新后续模式；启动失败可重试。“继续修改”或直接输入修改意见保持 Plan 模式。等待选择期间暂停自动派发 Queue，实施不丢弃已有 Queue，也不解除显式暂停。
+- `/model` 按目录 Cursor 分页读取可见模型，第一步选择模型，第二步选择该模型支持的推理强度；支持默认值提示、返回与取消。确认时重新请求目录校验，解析目录 ID 到实际 model 名称后原子更新 model/effort，避免继承旧模型不支持的强度。参数式快捷命令继续兼容。
+- Android 将无自由输入的单字段纯选项 Form 渲染成直接操作按钮；提交期间禁止重复点击。多字段、Other 和敏感输入仍使用原有原子表单。历史卡片、会话计数与通知统一使用“交互”文案，避免将计划和模型选择误称为审批。
+- 本地选择响应只处理一次；桌面新 Turn、Session 结束或 Provider 断连会关闭失效按钮，响应校验与归约使用同一 Mapper 锁，避免生命周期事件插入其间导致错误回写。
+
+关键决策：
+
+- 复用 Domain JSON v2 / Native Transport v3 的 Form Request/Response，不新增线协议类型，不向 Codex 回写不存在的 permission/tool 请求。
+- 最多保留 64 个 Host 本地选择，模型目录最多 21 页 / 1,000 条并拒绝重复 Cursor。状态只存在于当前 Host 进程；手机重连可恢复，Host 重启不恢复旧待处理交互，不引入数据库。
+
+验证结果：
+
+- Rust Codex Provider 41 项测试通过、2 项按设计 ignored；新增覆盖实施失败重试、修改仍为 Plan 模式、模型分页与重新校验、目录 ID 映射、桌面新 Turn 关闭旧按钮、直接输入修改意见及重复点击。Clippy `-D warnings`、Rustfmt、Release Host 构建通过。
+- Android `testDebugUnitTest`、`lintDebug`、`assembleDebug` 通过；Debug APK 已通过 USB 覆盖安装到设备 `10CD5Q1FAS0007Y`。Release Host 已安装到本机并重新启动。
+- Android 15 手机经既有公网 Relay 输入 `/model`，点击 `GPT-5.6-Sol` → `medium`，收到成功回执；随后普通消息收到真实回复 `AP_MODEL_BUTTON_OK`，输入框继续可用。
+- 手机开启 Plan 模式后生成临时文件计划，界面显示“等待交互”和两个操作按钮，文件尚未创建。覆盖安装 APK 后重新连接，待处理计划恢复且按钮可用。
+- 手机点击“继续修改”并更改目标文件名后生成新计划；再点击“实施计划”，真实 Codex 只创建 `/tmp/agentpulse-plan-e2e.xYBBt2/proof-revised.txt`。实测文件为 20 字节、精确包含 `AP_PLAN_IMPLEMENTED\n`，原 `proof.txt` 不存在；手机收到实施完成回复，输入框继续可用。
+
+相关提交：
+
+- 本轮基线为总控 `8641584`、Rust `a9ae12a`、Android `bfe4d98`、协议规范 `2de52a6`；实现、测试、规范和日志均为工作区修改，未提交、未推送。本轮未更新 Submodule 指针，Rust 指针差异在开始本轮前已存在。
+
+遗留事项：本轮关闭计划实施交互和按钮式模型选择两个问题；原有多字段/敏感输入组合、完整 Queue 断连恢复与跨 128 Event 验收不计为本轮完成。临时验收文件保留供核对。
+
+下一目标：在 Android 15 公网 Relay 链路完成 Prompt Queue 断连恢复验收。
 
 ### 2026-09-05 — `/model` 非法输入不再锁死后续消息
 
