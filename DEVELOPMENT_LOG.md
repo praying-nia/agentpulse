@@ -15,6 +15,7 @@
 
 最后更新：2026-09-10
 
+- Windows CI 配对测试：服务端测试夹具已改用 `ensure_private_dir` 创建凭据目录，显式设置新目录所有者，避免 Windows CI 默认所有者触发既有权限校验。Linux 配对测试全部通过，Windows 运行结果仍待 CI 确认。
 - 使用文档：已新增[中文详细使用手册](docs/USER_GUIDE.zh-CN.md)，覆盖安装、两种首次使用流程、扫码、日常操作、手机指令、设备维护、自建 Relay 与故障排查；总控和组件 README 已加入入口并修正旧的 Relay-only 说法。
 - 公网直连：已在本机公网 IPv4 与 Android 15 移动网络之间验证真实二维码解码/配对、Native 连接、App 冷启动及主动断开重连；受管控制连接在线时的手机消息和模型回答往返通过。独立实例未配置 Relay，实际 TCP 来源证明手机直达 Host。端口映射和相机光学扫码未覆盖，控制连接退出后的回复回传另待定位，详见[实机验收记录](docs/validation/2026-09-10-public-direct.md)。
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
@@ -36,6 +37,16 @@
 - 既有首轮标题线程、Queue/复杂输入/跨 128 Event 真机验收和桌面计划弹窗事项继续保留。
 
 ## 历史记录
+
+### 2026-09-10 — 修正 Windows CI 配对测试目录创建
+
+状态：测试夹具修复完成，Linux 回归通过；Windows 尚未复跑。本次修改未提交、未推送。
+
+- `public_tls_boundary_requires_explicit_constructor` 在 Windows CI 初始化凭据时报告目录不属于当前用户。服务端测试使用普通 `fs::create_dir`，绕过了平台层针对新建目录显式设置所有者的处理；已通过的 store 测试使用的是 `ensure_private_dir`。
+- 服务端共享测试目录改用相同私有目录 API，覆盖这条测试和其余配对服务测试；保持生产权限校验与测试断言不变。
+- 验证：Linux `cargo test -p agentpulse-pairing -- --include-ignored` 全部 13 项通过，包含 socket 测试；`cargo fmt --all -- --check` 通过。无 Windows 实机，本次不能确认 Windows ACL 执行结果，需 CI 复跑。
+- Git 状态：Rust 基于 `041b49f`，本次测试夹具与总控日志修改尚未提交。
+- 唯一下一目标：定位控制连接退出后，手机发起消息的模型回复未回传的会话生命周期问题。
 
 ### 2026-09-10 — 本机公网 IPv4 与 Android 移动网络直连验收
 
