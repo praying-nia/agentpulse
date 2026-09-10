@@ -10,6 +10,10 @@ When both the Provider and Channel support a capability, users can also perform 
 
 当 Provider 与 Channel 同时支持相应能力时，用户还可以远程批准或拒绝操作、回答问题、提交简短文本或发送简单指令。
 
+## User guide / 使用手册
+
+[中文详细使用手册](docs/USER_GUIDE.zh-CN.md)：安装、首次启动、Relay / 公网直连、扫码配对、Linux `ap`、手机交互、设备管理、自建 Relay 与故障排查。
+
 ## Architecture / 架构
 
 ```text
@@ -70,9 +74,13 @@ git submodule update --init --recursive
 
 ## Status / 状态
 
-AgentPulse now provides an Android observation, approval, atomic Plan-form, and common remote-command path from the managed App Server through RuntimeHost/Bridge and authenticated Native TLS over either private LAN or the public Relay. First trust is established only by scanning a short-lived Host-terminal QR code: its route is published through Relay, still requires Host-terminal approval, and needs no USB, ADB, Bluetooth, or shared LAN. Native Transport v3 retains the complete current Host-run history in memory and incrementally repairs per-Session gaps after ordinary disconnects; Android keeps the matching process-memory cache and resets it when the Host run changes. Remote prompts use bounded process-memory FIFO queues, and `/resume` hydrates message history through paginated App Server reads. iOS and HarmonyOS remain scaffolds; cross-process persistence remains outside the current boundary.
+AgentPulse now provides an Android observation, approval, atomic Plan-form, and common remote-command path from the managed App Server through RuntimeHost/Bridge and authenticated Native TLS over private LAN, the public Relay, or explicitly configured public direct access. First trust is established only by scanning a short-lived Host-terminal QR code: its route is supplied by the QR and uses either Relay or explicitly configured public direct access, still requires Host-terminal approval, and needs no USB, ADB, Bluetooth, or shared LAN. Native Transport v3 retains the complete current Host-run history in memory and incrementally repairs per-Session gaps after ordinary disconnects; Android keeps the matching process-memory cache and resets it when the Host run changes. Remote prompts use bounded process-memory FIFO queues, and `/resume` hydrates message history through paginated App Server reads. iOS and HarmonyOS remain scaffolds; cross-process persistence remains outside the current boundary.
 
-AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 Native TLS，并通过私有 LAN 或公网 Relay 到 Android 原生 App 的观察、审批、原子 Plan 表单与常用远程指令链路。首次信任只允许扫描 Host 终端生成的短时二维码：临时路由经 Relay 发布，仍需 Host 终端确认，并且不依赖 USB、ADB、蓝牙或共享局域网。Native Transport v3 在内存中保留当前 Host 运行周期的完整历史，普通断连后按 Session 增量补齐；Android 保留对应的进程内缓存，Host 运行周期改变时明确重置。远程 Prompt 使用有界进程内 FIFO，`/resume` 通过 App Server 分页恢复消息历史。iOS 与 HarmonyOS 仍为 Scaffold；跨进程持久化不在当前边界内。
+AgentPulse 现已形成从受管 Codex App Server 经 RuntimeHost/Bridge、认证 Native TLS，并通过私有 LAN、公网 Relay 或显式配置的公网直连到 Android 原生 App 的观察、审批、原子 Plan 表单与常用远程指令链路。首次信任只允许扫描 Host 终端生成的短时二维码：二维码携带 Relay 或显式配置的公网直连入口，仍需 Host 终端确认，并且不依赖 USB、ADB、蓝牙或共享局域网。Native Transport v3 在内存中保留当前 Host 运行周期的完整历史，普通断连后按 Session 增量补齐；Android 保留对应的进程内缓存，Host 运行周期改变时明确重置。远程 Prompt 使用有界进程内 FIFO，`/resume` 通过 App Server 分页恢复消息历史。iOS 与 HarmonyOS 仍为 Scaffold；跨进程持久化不在当前边界内。
+
+Public IPv4 direct pairing, cold-start reconnects and live message exchange with an online managed control connection have passed Android 15 cellular acceptance. NAT mapping and optical camera capture remain outside that run; see the [acceptance report](docs/validation/2026-09-10-public-direct.md).
+
+公网 IPv4 直连已通过 Android 15 移动网络配对、冷启动与重连，以及控制连接在线时的消息往返验收；端口映射、光学扫码和控制连接退出后的消息回传边界见[实机记录](docs/validation/2026-09-10-public-direct.md)。
 
 Verified milestones, current constraints, and the next target are maintained in the [Development Log / 开发日志](DEVELOPMENT_LOG.md).
 

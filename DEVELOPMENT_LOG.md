@@ -13,8 +13,10 @@
 
 ## 当前状态
 
-最后更新：2026-09-09
+最后更新：2026-09-10
 
+- 使用文档：已新增[中文详细使用手册](docs/USER_GUIDE.zh-CN.md)，覆盖安装、两种首次使用流程、扫码、日常操作、手机指令、设备维护、自建 Relay 与故障排查；总控和组件 README 已加入入口并修正旧的 Relay-only 说法。
+- 公网直连：已在本机公网 IPv4 与 Android 15 移动网络之间验证真实二维码解码/配对、Native 连接、App 冷启动及主动断开重连；受管控制连接在线时的手机消息和模型回答往返通过。独立实例未配置 Relay，实际 TCP 来源证明手机直达 Host。端口映射和相机光学扫码未覆盖，控制连接退出后的回复回传另待定位，详见[实机验收记录](docs/validation/2026-09-10-public-direct.md)。
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
 - 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
 - Model 选择安全性：`/model <id> [effort]` 先用实时 `model/list` 校验模型和该模型声明的推理强度，非法输入只产生明确拒绝 Event，不再写入 Turn 默认值、导致后续 `turn/start` 失败并暂停消息队列；Android 同时拒绝多余参数并规范化 effort 大小写。
@@ -24,15 +26,83 @@
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
 - 配对与会话发现修复：Host 按设备独立注册 Relay 路由，每 100 ms 检查新增凭据；配对成功回执等待对应路由确认，超时返回错误并撤销未交付凭据。自动发现忽略未显式选择的 ephemeral 线程，避免首次对话的后台标题生成线程出现在手机会话列表。自动化回归与 Release 构建通过；本轮已安装新 Host、部署配套 Relay 并完成 Android 15 公网真机配对验收。重新配对同一 Host 前 Android 会停止旧连接，避免旧凭据被撤销后卡片短暂报错。
 - 已知问题：Codex CLI 0.153.0 的桌面本地计划选择框不会随手机启动实施而关闭。按用户决定不修改 Codex；可用 Escape 关闭旧框，避免再次确认实施。
-- 唯一下一目标：在 Android 15 公网 Relay 链路验收首轮对话不展示临时标题线程。
+- 唯一下一目标：定位控制连接退出后，手机发起消息的模型回复未回传的会话生命周期问题。
 
 ### 下一目标的验收边界
 
-- 首轮对话后不出现后台标题生成的临时会话；主会话仍可持续通信。
-- 本轮配对验收已覆盖实际公网 Relay、终端批准、未连接和已有连接时重新配对，以及卡片全程错误监测；不包含摄像头光学采集与对焦测试。
-- 桌面计划选择框保留为已知问题；此前 Prompt Queue 断连恢复、多字段/敏感输入和跨 128 Event 验收继续作为未完成事项保留。
+- 复现受管会话控制连接退出后，手机提交被接受、模型已完成但手机未收到回复的情况；与控制连接保持在线的成功场景对照。
+- 分别确认 App Server 通知、Provider 映射、Host 历史和手机事件游标，不把缺少证据的阶段归因于公网直连。
+- 公网 IPv4 配对/冷启动/重连及在线控制连接的消息往返已有通过证据；NAT 映射、IPv6、相机光学扫码和网络被动中断恢复仍未覆盖。
+- 既有首轮标题线程、Queue/复杂输入/跨 128 Event 真机验收和桌面计划弹窗事项继续保留。
 
 ## 历史记录
+
+### 2026-09-10 — 本机公网 IPv4 与 Android 移动网络直连验收
+
+状态：直连配对、App 冷启动、主动重连及在线控制连接下的真实消息往返通过；另发现控制连接退出后的回传待排查场景。测试实现与文档未提交、未推送。
+
+环境与完成内容：
+
+- 本机 wlo1 直接拥有公网 `58.240.249.242`，Android 15 vivo V2282A 使用移动网络，App 断言非 VPN、非 Wi-Fi。
+- 使用 release Host 和 `/tmp/ap-direct-20260910` 独立身份，Relay 配置/运行状态均 disabled；配对 TCP 49321 与 Native TCP 49320。手机公网来源 `122.96.33.193` 被实际 established socket 记录确认。
+- 正式终端二维码由 ML Kit 解码并经终端批准，手机保存 DIRECT 路线和公网业务入口；没有通过 ADB reverse 传输配对或业务数据。
+- 新增 `DirectConnectionTest`：保存凭据冷启动、两次连接/断开、移动网络/入口断言，可选指定会话进行真实消息与 assistant 回复校验。配对测试新增 direct 断言并修正 Activity 启动时序；未改生产连接逻辑。
+
+验证结果：
+
+- 首次配对测试 9.04 秒通过，11:10:18.544 等待批准，11:10:18.737 配对成功，11:10:19.650 CONNECTED，无卡片错误。
+- App 强制结束后的冷启动及两次重连 14.767 秒通过，观察到不同手机公网源端口直达 49320。
+- 新建并保持控制连接在线的只读会话中，手机消息在 11:22:27.640 被 Host 接受，11:22:31.874 收到 `AP_DIRECT_PUBLIC_OK` 的新 assistant 事件，随后再次重连成功；19.439 秒通过。
+- Host release 构建、更新后的 instrumentation APK 构建、Android lint 与 whitespace 检查通过。App APK 已覆盖安装并保留数据；本机默认旧 Host 可执行文件和原 Relay 配置未修改。
+
+失败与边界：最初扫码/重连测试存在前台页面启动等待问题，经测试工具修正后通过。另一次消息检查中，原控制连接已退出，模型历史确认回复完成，但手机 120 秒内未看到匹配回复；根因尚未定位，未记为通过。没有验证实际端口映射、IPv6、摄像头取景或全部断网恢复场景。
+
+清理：两个明确属于临时工作区的 Codex 会话已归档，独立测试 Host 已停止，二维码临时文件已删除；测试身份/私有诊断文件暂存 `/tmp`，手机保留可自行忘记的测试 Host 记录。未替换默认 Host、未改公网防火墙或远端 Relay。详细证据见 [验收报告](docs/validation/2026-09-10-public-direct.md)。
+
+下一目标：定位控制连接退出后，手机发起消息的模型回复未回传的会话生命周期问题。
+
+### 2026-09-10 — 中文详细使用手册
+
+状态：文档编写及核对完成；本轮仅修改文档，未安装、部署或更改生产配置，未提交、未推送。
+
+完成内容：
+
+- 新增 `docs/USER_GUIDE.zh-CN.md`，按实际首次使用顺序覆盖 Host/Android 安装、已有 Relay、公网直连、三个终端的职责、端口映射、扫码确认、Linux `ap`、手机会话/审批/Plan/队列与 Slash Command。
+- 补充 Windows PowerShell 示例、IPv6 入口、配置目录、运行配置与保存配置的区别、路线切换、设备撤销、数据保存、升级、自建 Relay、故障对照表与验收步骤。
+- 从主 README、Rust/Host/Android README 添加入口，修正“首次扫码只能 Relay”及 Android README 将自动重连描述为手动操作的旧说明。
+- 保留明确边界：公网直连实机验收尚未完成；Android 是当前完整手机入口；源码能力不等于所有发布包已包含该功能。
+
+验证：对照 Host/Relay CLI、Android 指令解析/UI 文案、构建与 CI 配置、`ap` 脚本核对事实；19 个 Host `--help` 调用通过，30 个 Bash 示例在替换占位符后通过 `bash -n`；本地链接/锚点、代码块配对和 whitespace 检查通过。示例未实际执行安装或网络部署；纯文档变更未重复运行产品构建测试。
+
+Git：本轮文档和前一轮直连实现均保留在工作区，未提交、未推送。
+
+下一目标：在无 Relay 配置的公网 Host 与 Android 移动网络之间验收直连扫码、业务连接和重连。
+
+### 2026-09-10 — 公网直连实现与自动化验证
+
+状态：实现、协议文档和自动化回归完成；公网移动网络实机验收未完成。本轮所有修改未提交、未推送，未安装或部署。
+
+完成内容与决策：
+
+- 新增 `agentpulse direct configure/status/disable`，保存具体本地监听 IP、固定 Native/配对端口和独立对外入口；支持 DNS、IPv4、IPv6 及端口映射，本地默认 49320/49321。
+- 保存配置在 Host 重启时生效，二维码读取运行中的有效配置；显式 serve 参数冲突直接报错。配置直连时新配对优先直连，不自动回退 Relay；已有 Relay 连接器保留。`ap` 配置直连后不再固定传入 loopback bind，日常命令保持不变。
+- v1 Relay 二维码格式保留；新增严格 v2 发现包及 Rust/Android/协议仓库一致的样例，明确 `route=direct`。WebSocket 配对消息仍为 v1。配对成功响应交付对外 Native 入口，与临时配对端口分开。
+- 公网监听通过显式 TLS 构造入口启用；内部未鉴权服务仍受 loopback 限制。直连配对保留指纹校验、短期单次令牌和终端确认；终端等待受剩余有效期限制，拒绝或过期不签发凭证，退出后释放配对端口。
+- Android 扫码器识别新版发现包，自动保存 DIRECT 路线与公网业务入口，重连绕过 Relay 和 mDNS，DNS 使用全部解析地址；既有 LAN/RELAY 凭证可读取。直连设备沿用现有页面展示“公网直连”，无需增加扫码选项。
+- 增加部署/映射说明、旧 App 升级要求及公网验收边界；更新 Host、Pairing crate、Android README 和共享协议文档。
+
+验证结果：
+
+- Rust 相关四个 crate 的 37 项测试通过，显式启用 ignored socket 测试。覆盖直接 TLS 配对、外部端口交付、旧 v1 样例、拒绝/过期不发凭证、占用与释放、鉴权/撤销、CLI 配置/冲突和既有连接回归。
+- Clippy `--all-targets -- -D warnings` 通过；Rustfmt 与 `bash -n scripts/ap` 通过。
+- Android protocol 17 项、app 11 项单元测试通过；`assembleDebug`、`assembleDebugAndroidTest`、`lintDebug` 通过。
+- 三处 v2 样例逐字节一致，各仓库 whitespace 检查通过。
+
+Git 与部署：工作区修改未提交、未推送；未更新 Submodule 指针，未替换已安装 Host/Android，未操作公网服务配置。
+
+遗留事项：公网网卡与端口映射的真实移动网络验收、相机光学扫码和 App 重启后的真实公网重连尚未验证。本地测试不能证明公网路由或防火墙可达。
+
+下一目标：在无 Relay 配置的公网 Host 与 Android 移动网络之间验收直连扫码、业务连接和重连。
 
 ### 2026-09-09 — 真机复现连接卡片错误，完成部署与回归
 
