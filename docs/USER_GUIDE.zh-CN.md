@@ -368,6 +368,8 @@ agentpulse serve --discover-threads --codex /path/to/codex
 
 Relay loopback 环境同时加 `--bind 127.0.0.1`；直连环境由直连配置确定监听。Windows 应指向实际原生可执行文件，Host 不通过修改 PowerShell 执行策略来运行任意脚本包装器。
 
+Windows 通过 npm 全局安装的 Codex 可以直接使用默认 `codex` 名称：Host 会查找原生 `codex.exe`，以及 npm 安装目录中嵌套或同级的官方平台包和旧版 vendor 目录。也可传入官方 `codex.cmd` / `codex.ps1` 的完整路径，Host 仅据此定位平台包，不执行脚本。自定义包装器应改为指定实际 `.exe` 路径；含空格的路径需加引号。
+
 ### 7.2 Linux 的 `ap` 快捷入口
 
 `ap` 依赖 Bash、`flock`、systemd 用户服务和 `journalctl`，不作为 Windows/macOS 通用命令。Host 初始化和连接配置仍需先完成。

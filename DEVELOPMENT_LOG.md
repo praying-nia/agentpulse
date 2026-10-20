@@ -13,9 +13,10 @@
 
 ## 当前状态
 
-最后更新：2026-09-10
+最后更新：2026-10-20
 
-- Windows CI 配对测试：服务端测试夹具已改用 `ensure_private_dir` 创建凭据目录，显式设置新目录所有者，避免 Windows CI 默认所有者触发既有权限校验。Linux 配对测试全部通过，Windows 运行结果仍待 CI 确认。
+- Windows Host：已在 Windows x86_64 GNU 上完成 80 项去重测试，包括 ACL、管理管道、进程树、配对、真实 Codex 代理和 Host 启停；格式、严格 Clippy 与文档检查通过。补齐 npm 同级平台包查找，并将配对 socket 测试加入平台 CI。MSVC CI、手机链路与首次就绪超时的未定根因仍保留边界，见[验收记录](docs/validation/2026-10-20-windows-host.md)。
+- Windows 配对测试：此前服务端夹具的 `ensure_private_dir` 修复已通过本机全量 13 项测试；远端 CI 结果尚未确认。Rust 修复已签名推送至 `fix/windows-host-validation`，总控指针随本提交更新。
 - 使用文档：已新增[中文详细使用手册](docs/USER_GUIDE.zh-CN.md)，覆盖安装、两种首次使用流程、扫码、日常操作、手机指令、设备维护、自建 Relay 与故障排查；总控和组件 README 已加入入口并修正旧的 Relay-only 说法。
 - 公网直连：已在本机公网 IPv4 与 Android 15 移动网络之间验证真实二维码解码/配对、Native 连接、App 冷启动及主动断开重连；受管控制连接在线时的手机消息和模型回答往返通过。独立实例未配置 Relay，实际 TCP 来源证明手机直达 Host。端口映射和相机光学扫码未覆盖，控制连接退出后的回复回传另待定位，详见[实机验收记录](docs/validation/2026-09-10-public-direct.md)。
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
@@ -27,7 +28,7 @@
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
 - 配对与会话发现修复：Host 按设备独立注册 Relay 路由，每 100 ms 检查新增凭据；配对成功回执等待对应路由确认，超时返回错误并撤销未交付凭据。自动发现忽略未显式选择的 ephemeral 线程，避免首次对话的后台标题生成线程出现在手机会话列表。自动化回归与 Release 构建通过；本轮已安装新 Host、部署配套 Relay 并完成 Android 15 公网真机配对验收。重新配对同一 Host 前 Android 会停止旧连接，避免旧凭据被撤销后卡片短暂报错。
 - 已知问题：Codex CLI 0.153.0 的桌面本地计划选择框不会随手机启动实施而关闭。按用户决定不修改 Codex；可用 Escape 关闭旧框，避免再次确认实施。
-- 唯一下一目标：定位控制连接退出后，手机发起消息的模型回复未回传的会话生命周期问题。
+- 唯一下一目标：在 Windows Host 上复现并定位控制连接退出后，手机发起消息的模型回复未回传的会话生命周期问题。
 
 ### 下一目标的验收边界
 
@@ -37,6 +38,18 @@
 - 既有首轮标题线程、Queue/复杂输入/跨 128 Event 真机验收和桌面计划弹窗事项继续保留。
 
 ## 历史记录
+
+### 2026-10-20 — Windows Host 本机回归与 npm 平台包定位修复
+
+状态：本机验收完成；Rust 修复已签名提交并推送，总仓库指针与记录随本提交更新。未声称 CI 或手机端验收完成。
+
+- 修复 Windows npm 同级可选平台包无法定位的问题，覆盖 `bin` / `codex` 布局、两种官方 shim 入口及中文空格路径；不执行脚本包装器。
+- 清理 Host 状态文件的单元素循环，通过 Rust 1.99.1 严格 Clippy；平台 CI 新增此前忽略的五项配对 socket 测试。
+- 验证：Windows x86_64 GNU 上 80 项不同测试通过；包括配对全量 13 项、真实 Codex 初始化和代理测试 2 项、真实 Host 两次启停。格式、严格 Clippy、Rustdoc 和 diff whitespace 检查通过。
+- Codex `0.163.0-alpha.10.2` 仅确认基础运行链路；没有模型 Turn、手机和公网验收，不升级完整协议支持声明。首次 Host 就绪测试曾超时，后续诊断及最终串行复跑通过，根因未定。
+- Git：总仓库基线 `31dbcfc`；Rust 签名修复提交 `a736c78`，已推送分支 `fix/windows-host-validation`。首次未签名推送被 GitHub verified-signature 规则拒绝；用户登记签名公钥后补签名推送成功。临时工具链、依赖缓存和构建产物已清理。
+- 详细命令、工具链警告及验收边界见[Windows Host 验收记录](docs/validation/2026-10-20-windows-host.md)。
+- 唯一下一目标：在 Windows Host 上复现并定位控制连接退出后，手机发起消息的模型回复未回传的问题。
 
 ### 2026-09-10 — 修正 Windows CI 配对测试目录创建
 
