@@ -13,14 +13,16 @@
 
 ## 当前状态
 
-最后更新：2026-10-20
+最后更新：2026-11-03
+
+- Codex 兼容更新：当前 CLI/Schema 基线已升至 `0.166.0`，保留旧版验证入口及中间版本的尽力兼容策略。Linux Host + Android 16 模拟器已通过扫码配对、连续消息、命令审批、输入单选、模型/推理强度、计划修改/实施及重连验收。已修复手机时钟落后导致表单被拒、控制端退出后回复未回传、迟到镜像事件阻塞后续消息的问题。Rust 66 项、Android 单测 30 项及模拟器 8 个独立测试通过；固定 Gradle 9.7.1 的 Lint、APK 构建通过。Windows/macOS 与新版真机仍未复验，详见[升级记录](docs/validation/2026-11-03-codex-0166.md)。
 
 - Windows Host：已在 Windows x86_64 GNU 上完成 80 项去重测试，包括 ACL、管理管道、进程树、配对、真实 Codex 代理和 Host 启停；格式、严格 Clippy 与文档检查通过。补齐 npm 同级平台包查找，并将配对 socket 测试加入平台 CI。MSVC CI、手机链路与首次就绪超时的未定根因仍保留边界，见[验收记录](docs/validation/2026-10-20-windows-host.md)。
 - Windows 配对测试：此前服务端夹具的 `ensure_private_dir` 修复已通过本机全量 13 项测试；远端 CI 结果尚未确认。Rust 修复已签名推送至 `fix/windows-host-validation`，总控指针随本提交更新。
 - 使用文档：已新增[中文详细使用手册](docs/USER_GUIDE.zh-CN.md)，覆盖安装、两种首次使用流程、扫码、日常操作、手机指令、设备维护、自建 Relay 与故障排查；总控和组件 README 已加入入口并修正旧的 Relay-only 说法。
-- 公网直连：已在本机公网 IPv4 与 Android 15 移动网络之间验证真实二维码解码/配对、Native 连接、App 冷启动及主动断开重连；受管控制连接在线时的手机消息和模型回答往返通过。独立实例未配置 Relay，实际 TCP 来源证明手机直达 Host。端口映射和相机光学扫码未覆盖，控制连接退出后的回复回传另待定位，详见[实机验收记录](docs/validation/2026-09-10-public-direct.md)。
+- 公网直连：已在本机公网 IPv4 与 Android 15 移动网络之间验证真实二维码解码/配对、Native 连接、App 冷启动及主动断开重连；受管控制连接在线时的手机消息和模型回答往返通过。独立实例未配置 Relay，实际 TCP 来源证明手机直达 Host。此前控制连接退出后回复未回传的问题，现已在 Linux/Android 模拟器上复现修复，并通过超过 60 秒空闲后的冷启动连续消息检查；Windows/蜂窝真机尚待复验。端口映射和相机光学扫码仍未覆盖，详见[原实机记录](docs/validation/2026-09-10-public-direct.md)及[本次升级记录](docs/validation/2026-11-03-codex-0166.md)。
 - 当前阶段：Android 链路已升级为 Domain JSON v2 / Native Transport v3，支持观察、审批、原生 Codex Plan 协作模式选择/文本表单、带 Host 确认的消息输入和常用 Slash Command。Host 继续只在本次进程内保留完整 Event 历史，Android 继续只在本次进程内按 Cursor 增量补齐；展示层保持会话、待处理项与 Event 最新在上。
-- 已完成：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，恢复后按 `thread/items/list` 升序分页补齐完整消息。
+- 已实现：`item/tool/requestUserInput` 原子表单、Other/自由文本与敏感输入、类型化远程指令、默认 FIFO Prompt Queue 与显式 Steer、`/model`、`/resume`、`/clear`、`/plan`、`/compact`、`/review`、`/rename`、`/fork`、`/status`、`/permissions`、`/stop` 和 Queue 控制。`/resume` 列表当前工作目录优先且组内最新优先，历史消息依赖上游 `thread/items/list` 分页；0.166.0 本轮后端存在历史接口不支持的限制，不将实时接续通过描述为历史恢复通过。
 - Model 选择安全性：`/model <id> [effort]` 先用实时 `model/list` 校验模型和该模型声明的推理强度，非法输入只产生明确拒绝 Event，不再写入 Turn 默认值、导致后续 `turn/start` 失败并暂停消息队列；Android 同时拒绝多余参数并规范化 effort 大小写。
 - 手机按钮交互：`/model` 已支持实时分页模型目录 → 对应推理强度的两步按钮选择；正式 Plan 完成后显示“等待交互”，提供“实施计划 / 继续修改”。两者复用 Host 本地 Form，不冒充 Codex permission/tool 请求。计划修改、实施、待确认计划的手机断连恢复及模型切换后继续对话已通过 Android 15 公网 Relay 真机验证。
 - 真机进度：Android 15 已通过公网 Relay 收到真实 Codex `request_user_input` 单选 A/B/C，手机选择 C 后结果返回原桌面 TUI；`/model` 和普通消息已到达 Host/Codex 并回显结果，提交框只在收到相关 `command_result` 后清空。真机复测发现旧 `/plan` 仅伪造提示词、实际 Turn 仍为 Default；该实现已修复并完成自动化与真实 App Server 握手验证，等待换用新 Host 后复验原生 Plan 多字段、Other 与敏感字段组合。
@@ -28,16 +30,38 @@
 - 明确决策：Prompt Queue 每 Session 最多 32 项、单项 64 KiB、全局 1 MiB，仅存在 Provider 进程内；`stop` 保留并暂停 Queue，`turn/start` 拒绝也保留队首并暂停。Session/Event、Queue、待处理交互与 Thread 历史都不使用数据库；敏感表单答案写入 Codex 后不保留。Native v3 不兼容旧 Native 端点，但既有设备凭据继续有效。
 - 配对与会话发现修复：Host 按设备独立注册 Relay 路由，每 100 ms 检查新增凭据；配对成功回执等待对应路由确认，超时返回错误并撤销未交付凭据。自动发现忽略未显式选择的 ephemeral 线程，避免首次对话的后台标题生成线程出现在手机会话列表。自动化回归与 Release 构建通过；本轮已安装新 Host、部署配套 Relay 并完成 Android 15 公网真机配对验收。重新配对同一 Host 前 Android 会停止旧连接，避免旧凭据被撤销后卡片短暂报错。
 - 已知问题：Codex CLI 0.153.0 的桌面本地计划选择框不会随手机启动实施而关闭。按用户决定不修改 Codex；可用 Escape 关闭旧框，避免再次确认实施。
-- 唯一下一目标：在 Windows Host 上复现并定位控制连接退出后，手机发起消息的模型回复未回传的会话生命周期问题。
+- 唯一下一目标：在 Windows Host + Android 真机上复验 Codex 0.166.0 的扫码配对、连续消息和控制端退出后的手机接续。
 
 ### 下一目标的验收边界
 
-- 复现受管会话控制连接退出后，手机提交被接受、模型已完成但手机未收到回复的情况；与控制连接保持在线的成功场景对照。
-- 分别确认 App Server 通知、Provider 映射、Host 历史和手机事件游标，不把缺少证据的阶段归因于公网直连。
-- 公网 IPv4 配对/冷启动/重连及在线控制连接的消息往返已有通过证据；NAT 映射、IPv6、相机光学扫码和网络被动中断恢复仍未覆盖。
-- 既有首轮标题线程、Queue/复杂输入/跨 128 Event 真机验收和桌面计划弹窗事项继续保留。
+- 使用 Windows Host、真实 Android 设备和 Codex 0.166.0，记录实际 Host/APK 版本及网络条件；测试实例和会话必须隔离。
+- 完成真实扫码配对和连续消息，对照控制端在线、退出以及空闲后的手机接续，要求新 assistant 消息及完成事件。
+- Linux/Android 模拟器的 8 个独立测试、30 项 Android 单测、66 项 Rust 回归已通过；不能据此替代 Windows/蜂窝真机结果。
+- 保留 macOS 新基线、NAT 映射、IPv6、相机光学扫码、复杂表单及上游不支持的历史查询接口边界。
 
 ## 历史记录
+
+### 2026-11-03 — Codex 0.166.0 模拟器整链路与会话接续修复
+
+- 完成：恢复 Android 构建及模拟器环境；真实终端二维码经 ML Kit、终端批准和加密凭据存储后直连独立 Host。消息、模型/推理强度选择、非法模型恢复、计划修改/实施、真实命令审批及单选输入均通过，并检查实际生成文件内容。
+- 修复：Android 响应时间取当前时间与 Host 请求时间的较晚值；发现会话后由 Host 独立订阅，空会话首个 Turn 后重试；处理 0.166.0 已订阅后的历史游标错误；过滤已完成 Turn 的迟到事件，避免后续 Prompt 排队不动。
+- 验证：先复现控制端退出后无回复，再验证修复后冷启动及两次连接的新消息；会话空闲超过 60 秒后再次通过。模拟器共 8 个独立测试通过（含 4 项启动/导航/凭据测试），Android JVM 单测 30 项、Rust 串行回归 66 项、严格 Clippy/格式通过。固定 Gradle 9.7.1 经仓库 SHA-256 校验，单测、Lint、两个 APK 构建通过；最终安装包再通过 4 项冒烟测试。
+- 决策：保持现有产品操作及 Native v3 / Domain v2；蜂窝网络测试默认约束不变，模拟器显式放宽 Wi-Fi 检查。没有增加数据库或静默路由回退。临时 Host、AVD、工作区和 Gradle 分发使用 `/tmp`。
+- Git：总控 `6b915e7`、Rust `0602fa7`、Android `f3b7098`、协议 `8b10ddd` 为当前 HEAD；相关修改均在工作区，未提交、推送或部署。
+- 收尾：测试 Thread 按临时工作区范围清理；独立 Host 已停止且端口释放。本轮模拟器、临时 AVD、Gradle 分发、Host 凭据和工作区已删除，保留少量临时日志/截图。
+- 遗留：Windows/macOS 和新版真机未复验；模拟器不能证明蜂窝/NAT/光学扫码。复杂多字段、Other/敏感组合未逐项模型实测；上游不支持的历史查询未被宣称可用。详细结果见[升级记录](docs/validation/2026-11-03-codex-0166.md)。
+- 唯一下一目标：在 Windows Host + Android 真机上复验 Codex 0.166.0 的扫码配对、连续消息和控制端退出后的手机接续。
+
+### 2026-11-03 — Codex 0.166.0 协议基线升级
+
+状态：Linux 接入兼容与自动化回归完成，手机与其他平台验收待进行。变更未提交、未推送、未部署。
+
+- 根据本机 Codex 0.166.0 导出完整 experimental Schema，升级当前版本与校验快照，保留旧验证版本及高于0.153.0的中间版本尽力启动策略；修正对应警告措辞。
+- 增加新版 read-state 通知正反例与真实模型/权限目录、临时只读会话检查；可显式启用最小模型回复验收。修正旧 Native v3 集成夹具遗漏历史补齐帧。
+- 验证：Host/Provider/Native 串行66项通过；真实初始化、model/list、permissionProfile/list和临时会话通过；显式模型验收8.36秒通过，收到预期新assistant回复与completed通知。严格Clippy、格式和diff检查通过。
+- 限制：无ADB连接设备；Android单元测试因所需Gradle分发下载未完成而未得到结果；Windows/macOS未在本轮执行。既有控制连接退出后的回传问题尚未修复。未替换安装版本或正在运行的Host。
+- Git：Rust基线 `0602fa7`，总控、Rust和协议说明均保留工作区修改，未提交。详见[升级记录](docs/validation/2026-11-03-codex-0166.md)。
+- 唯一下一目标：连接Android真机，在Codex 0.166.0上验收现有手机消息、审批和计划交互，并对照控制连接退出后的回复回传。
 
 ### 2026-10-20 — Windows Host 本机回归与 npm 平台包定位修复
 
